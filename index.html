@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TeamSheet</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0f1117;--sur:#1a1d27;--sur2:#222636;--bdr:#2e3248;--ink:#eef0f8;--mut:#6b7094;--acc:#f59e0b;--grn:#10b981;--red:#ef4444;--blu:#3b82f6}
+body{background:var(--bg);color:var(--ink);font-family:'Barlow',sans-serif;min-height:100vh;font-size:15px}
+.hidden{display:none!important}
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999;flex-direction:column;gap:1rem}
+.spin{width:36px;height:36px;border:3px solid var(--bdr);border-top-color:var(--acc);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem;background:radial-gradient(ellipse at 50% 0%,rgba(245,158,11,.08),transparent 60%)}
+.abox{width:100%;max-width:420px}
+.logo{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:2.2rem;letter-spacing:-.02em}.logo span{color:var(--acc)}
+.tagline{color:var(--mut);font-size:.85rem;margin-bottom:2.5rem}
+.atabs{display:flex;gap:4px;margin-bottom:1.5rem;background:var(--sur);padding:4px;border-radius:8px}
+.atab{flex:1;padding:.55rem;text-align:center;font-weight:600;font-size:.82rem;letter-spacing:.05em;text-transform:uppercase;border:none;cursor:pointer;border-radius:6px;background:none;color:var(--mut);transition:all .15s}
+.atab.active{background:var(--sur2);color:var(--ink)}
+.fg{margin-bottom:1rem}
+.fg label{display:block;font-size:.72rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:6px}
+.fg input,.fg select{width:100%;background:var(--sur);border:1px solid var(--bdr);border-radius:6px;font-family:'Barlow',sans-serif;font-size:.95rem;color:var(--ink);padding:.65rem .9rem;outline:none;transition:border-color .15s}
+.fg input:focus,.fg select:focus{border-color:var(--acc)}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.btnp{width:100%;background:var(--acc);color:#000;border:none;border-radius:6px;padding:.75rem;font-family:'Barlow',sans-serif;font-weight:700;font-size:.9rem;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;transition:opacity .15s;margin-top:.5rem}
+.btnp:hover{opacity:.88}.btnp:disabled{opacity:.4;cursor:not-allowed}
+.amsg{margin-top:1rem;padding:.7rem .9rem;border-radius:6px;font-size:.85rem;font-weight:500}
+.amsg.err{background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.amsg.ok{background:rgba(16,185,129,.12);color:var(--grn);border:1px solid rgba(16,185,129,.2)}
+.amsg.info{background:rgba(59,130,246,.12);color:var(--blu);border:1px solid rgba(59,130,246,.2)}
+#app{min-height:100vh}
+.topbar{background:var(--sur);border-bottom:1px solid var(--bdr);padding:0 1.5rem;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.tlogo{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.3rem}.tlogo span{color:var(--acc)}
+.tright{display:flex;align-items:center;gap:1rem}
+.ubadge{font-size:.78rem;color:var(--mut);font-weight:500}.ubadge strong{color:var(--ink)}
+.rpill{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:20px}
+.rpill.manager{background:rgba(245,158,11,.12);color:var(--acc)}
+.rpill.worker{background:rgba(16,185,129,.12);color:var(--grn)}
+.rpill.pending{background:rgba(239,68,68,.12);color:var(--red)}
+.bso{background:none;border:1px solid var(--bdr);color:var(--mut);font-family:'Barlow',sans-serif;font-size:.75rem;font-weight:600;padding:5px 12px;border-radius:5px;cursor:pointer;transition:all .15s}
+.bso:hover{border-color:var(--red);color:var(--red)}
+.wrap{padding:1.5rem;max-width:1000px;margin:0 auto}
+#pending-view{min-height:calc(100vh - 56px);display:flex;align-items:center;justify-content:center;padding:2rem;text-align:center}
+.pbox{max-width:400px}.pbox h2{font-size:1.4rem;font-weight:700;margin-bottom:.5rem}.pbox p{color:var(--mut);line-height:1.6}
+.wnav{display:flex;align-items:center;gap:.75rem;background:var(--sur);border:1px solid var(--bdr);border-radius:8px;padding:.5rem .75rem;margin-bottom:1.25rem}
+.wnbtn{background:none;border:none;color:var(--mut);font-size:1.1rem;cursor:pointer;padding:2px 6px;transition:color .15s;line-height:1}
+.wnbtn:hover{color:var(--acc)}
+.wlabel{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1rem;flex:1;text-align:center}
+.wsbadge{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:20px}
+.wsbadge.draft{background:var(--sur2);color:var(--mut)}
+.wsbadge.submitted{background:rgba(59,130,246,.12);color:var(--blu)}
+.wsbadge.approved{background:rgba(16,185,129,.12);color:var(--grn)}
+.dlist{display:flex;flex-direction:column;gap:6px;margin-bottom:1.25rem}
+.dcard{background:var(--sur);border:1px solid var(--bdr);border-radius:8px;border-left:3px solid var(--bdr);transition:border-color .15s}
+.dcard.hh{border-left-color:var(--grn)}
+.dhead{display:flex;align-items:center;justify-content:space-between;padding:.7rem 1rem;cursor:pointer;border-radius:8px;user-select:none}
+.dhead:hover{background:var(--sur2)}
+.dtitle{display:flex;align-items:baseline;gap:.6rem}
+.dname{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:.9rem;letter-spacing:.08em;text-transform:uppercase}
+.ddate{font-size:.75rem;color:var(--mut)}
+.dright{display:flex;align-items:center;gap:.75rem}
+.dcodes{font-size:.68rem;color:var(--mut);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dhrs{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1rem;color:var(--grn);min-width:50px;text-align:right}
+.dhrs.z{color:var(--bdr)}
+.chev{color:var(--mut);font-size:.65rem;transition:transform .2s}
+.dcard.exp .chev{transform:rotate(180deg)}
+.dbody{display:none;padding:0 1rem .9rem}
+.dcard.exp .dbody{display:block}
+.elist{display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.erow{display:grid;grid-template-columns:120px 1fr 80px 28px;gap:6px;align-items:end;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;padding:8px 10px}
+.ef label{display:block;font-size:.6rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:4px}
+.ef input{width:100%;background:none;border:none;border-bottom:1px solid var(--bdr);font-family:'Barlow',sans-serif;font-size:.88rem;color:var(--ink);padding:2px 0;outline:none;transition:border-color .15s}
+.ef input:focus{border-bottom-color:var(--acc)}
+.ef input.hrs{text-align:right}
+.brem{background:none;border:1px solid var(--bdr);color:var(--mut);cursor:pointer;width:26px;height:26px;border-radius:4px;font-size:.75rem;transition:all .15s;display:flex;align-items:center;justify-content:center}
+.brem:hover{background:rgba(239,68,68,.12);color:var(--red);border-color:var(--red)}
+.badd{background:none;border:1px dashed var(--bdr);color:var(--mut);font-family:'Barlow',sans-serif;font-size:.75rem;padding:6px 10px;cursor:pointer;border-radius:5px;width:100%;text-align:left;transition:all .15s}
+.badd:hover{border-color:var(--acc);color:var(--acc)}
+.dsub{text-align:right;font-size:.75rem;color:var(--mut);margin-top:6px}
+.dsub strong{color:var(--grn);font-family:'Barlow Condensed',sans-serif;font-size:1rem}
+.tbar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:1.25rem}
+.tcard{background:var(--sur);border:1px solid var(--bdr);border-radius:8px;padding:1rem}
+.tcard .tl{font-size:.65rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:6px}
+.tcard .tv{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:2rem;line-height:1}
+.tcard.acc .tv{color:var(--acc)}.tcard.grn .tv{color:var(--grn)}.tcard.red .tv{color:var(--red)}
+.abar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem}
+.btn{font-family:'Barlow',sans-serif;font-weight:700;font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;padding:.65rem 1.2rem;border:none;border-radius:6px;cursor:pointer;transition:all .15s}
+.bsave{background:var(--sur2);color:var(--ink);border:1px solid var(--bdr)}.bsave:hover{border-color:var(--acc);color:var(--acc)}
+.bsub{background:var(--grn);color:#000}.bsub:hover{opacity:.85}.bsub:disabled{opacity:.4;cursor:not-allowed}
+.bpdf{background:var(--sur2);color:var(--ink);border:1px solid var(--bdr)}.bpdf:hover{border-color:var(--blu);color:var(--blu)}
+.buns{background:var(--sur2);color:var(--mut);border:1px solid var(--bdr);font-size:.72rem}.buns:hover{border-color:var(--red);color:var(--red)}
+.srow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:1.5rem}
+.scard{background:var(--sur);border:1px solid var(--bdr);border-radius:8px;padding:1rem}
+.scard .sl{font-size:.65rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:6px}
+.scard .sv{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.8rem;line-height:1}
+.scard.y .sv{color:var(--acc)}.scard.g .sv{color:var(--grn)}.scard.r .sv{color:var(--red)}.scard.b .sv{color:var(--blu)}
+.mtabs{display:flex;gap:4px;margin-bottom:1.25rem;background:var(--sur);padding:4px;border-radius:8px;width:fit-content}
+.mtab{padding:.45rem 1rem;font-family:'Barlow',sans-serif;font-weight:600;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;border:none;cursor:pointer;border-radius:6px;background:none;color:var(--mut);transition:all .15s}
+.mtab.active{background:var(--sur2);color:var(--ink)}
+.twrap{background:var(--sur);border:1px solid var(--bdr);border-radius:8px;overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{background:var(--sur2);padding:.65rem 1rem;font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);text-align:left;border-bottom:1px solid var(--bdr)}
+tbody td{padding:.75rem 1rem;border-bottom:1px solid var(--bdr);font-size:.88rem}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:var(--sur2)}
+.sbadge{font-size:.65rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:20px;white-space:nowrap}
+.sbadge.pending{background:rgba(245,158,11,.12);color:var(--acc)}
+.sbadge.submitted{background:rgba(59,130,246,.12);color:var(--blu)}
+.sbadge.approved{background:rgba(16,185,129,.12);color:var(--grn)}
+.sbadge.draft{background:var(--sur2);color:var(--mut)}
+.bsm{font-family:'Barlow',sans-serif;font-weight:600;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;padding:4px 10px;border-radius:4px;border:none;cursor:pointer;transition:all .15s}
+.bapp{background:rgba(16,185,129,.12);color:var(--grn)}.bapp:hover{background:var(--grn);color:#000}
+.brej{background:rgba(239,68,68,.12);color:var(--red)}.brej:hover{background:var(--red);color:#fff}
+.bview{background:rgba(59,130,246,.12);color:var(--blu)}.bview:hover{background:var(--blu);color:#fff}
+.empty{padding:3rem;text-align:center;color:var(--mut);font-size:.9rem}
+.mo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;padding:1.5rem}
+.mo.open{display:flex}
+.mbox{background:var(--sur);border:1px solid var(--bdr);border-radius:10px;width:100%;max-width:640px;max-height:85vh;overflow-y:auto;padding:1.5rem;position:relative}
+.mclose{position:absolute;top:1rem;right:1rem;background:none;border:none;color:var(--mut);font-size:1.2rem;cursor:pointer}
+.mtitle{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1.2rem;letter-spacing:.05em;text-transform:uppercase;margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid var(--bdr)}
+.dmeta{display:flex;gap:1.5rem;margin-bottom:1rem;flex-wrap:wrap}
+.dmi{font-size:.82rem}.dmi span{color:var(--mut);font-size:.72rem;display:block;margin-bottom:2px}
+.dtable{width:100%;border-collapse:collapse;font-size:.82rem;margin-bottom:1rem}
+.dtable th{text-align:left;padding:6px 8px;color:var(--mut);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--bdr)}
+.dtable td{padding:6px 8px;border-bottom:1px solid var(--bdr)}
+.dtable tr:last-child td{border-bottom:none}
+.dtable tfoot td{font-weight:700;color:var(--grn);border-top:1px solid var(--bdr)}
+.macts{display:flex;gap:8px;margin-top:1rem}
+.narea{width:100%;background:var(--sur2);border:1px solid var(--bdr);border-radius:6px;font-family:'Barlow',sans-serif;font-size:.88rem;color:var(--ink);padding:.7rem;resize:vertical;min-height:70px;outline:none;transition:border-color .15s}
+.narea:focus{border-color:var(--acc)}
+.hint{font-size:.72rem;color:var(--mut);margin-top:6px}
+.stitle{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1.1rem;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);margin-bottom:1.25rem}
+#toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--sur2);border:1px solid var(--bdr);color:var(--ink);padding:.7rem 1.4rem;border-radius:8px;font-size:.85rem;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}#toast.ok{border-color:var(--grn);color:var(--grn)}#toast.er{border-color:var(--red);color:var(--red)}
+@media(max-width:600px){.srow{grid-template-columns:1fr 1fr}.tbar{grid-template-columns:1fr 1fr}.erow{grid-template-columns:1fr 60px 26px}.erow .ef.df{display:none}.topbar{padding:0 1rem}.wrap{padding:1rem}}
+@media print{.topbar,.abar,.wnbtn,#toast{display:none!important}body{background:white;color:black}.dcard{border:1px solid #ccc!important}}
+</style>
+</head>
+<body>
+<div id="loading"><div class="spin"></div><div style="font-size:.8rem;color:var(--mut)">Loading...</div></div>
+
+<div id="auth" class="hidden">
+  <div class="abox">
+    <div class="logo">Team<span>Sheet</span></div>
+    <div class="tagline">Weekly timesheet tracker for your team</div>
+    <div class="atabs">
+      <button class="atab active" onclick="swTab('login')">Sign In</button>
+      <button class="atab" onclick="swTab('signup')">Sign Up</button>
+    </div>
+    <div id="lform">
+      <div class="fg"><label>Email</label><input type="email" id="lem" placeholder="your@email.com"></div>
+      <div class="fg"><label>Password</label><input type="password" id="lpw" placeholder="••••••••"></div>
+      <button class="btnp" onclick="doLogin()">Sign In</button>
+      <div id="lmsg"></div>
+    </div>
+    <div id="sform" class="hidden">
+      <div class="frow">
+        <div class="fg"><label>First Name</label><input type="text" id="sfn" placeholder="John"></div>
+        <div class="fg"><label>Last Name</label><input type="text" id="sln" placeholder="Smith"></div>
+      </div>
+      <div class="fg"><label>Email</label><input type="email" id="sem" placeholder="your@email.com"></div>
+      <div class="fg"><label>Phone (optional)</label><input type="tel" id="sph" placeholder="(555) 000-0000"></div>
+      <div class="fg"><label>Password</label><input type="password" id="spw" placeholder="Min 6 characters"></div>
+      <button class="btnp" onclick="doSignup()">Create Account</button>
+      <div id="smsg"></div>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="topbar">
+    <div class="tlogo">Team<span>Sheet</span></div>
+    <div class="tright">
+      <div class="ubadge"><strong id="tname"></strong></div>
+      <span class="rpill" id="trole"></span>
+      <button class="bso" onclick="doSignout()">Sign Out</button>
+    </div>
+  </div>
+
+  <div id="pending-view" class="hidden">
+    <div class="pbox">
+      <div style="font-size:3rem;margin-bottom:1rem">⏳</div>
+      <h2>Account Pending Approval</h2>
+      <p style="margin-top:.5rem">Your account has been created and is waiting for manager approval. You'll be notified once approved.</p>
+      <p style="margin-top:1rem;font-size:.82rem">Please contact your manager to get approved.</p>
+    </div>
+  </div>
+
+  <div id="worker-view" class="hidden">
+    <div class="wrap">
+      <div class="wnav">
+        <button class="wnbtn" onclick="chWeek(-1)">‹</button>
+        <div class="wlabel" id="wlabel"></div>
+        <button class="wnbtn" onclick="chWeek(1)">›</button>
+        <span class="wsbadge draft" id="wsbadge">Draft</span>
+      </div>
+      <div class="dlist" id="dlist"></div>
+      <div class="tbar">
+        <div class="tcard acc"><div class="tl">Total Hours</div><div class="tv" id="tot">0</div></div>
+        <div class="tcard grn"><div class="tl">Regular (≤40h)</div><div class="tv" id="reg">0</div></div>
+        <div class="tcard red"><div class="tl">Overtime (>40h)</div><div class="tv" id="ovt">0</div></div>
+      </div>
+      <div style="margin-bottom:1rem">
+        <div class="stitle">Notes</div>
+        <textarea class="narea" id="wnotes" placeholder="Notes for this week..."></textarea>
+      </div>
+      <div class="abar" id="wabar"></div>
+      <p class="hint">Hours auto-save. Submit when your week is complete for manager review.</p>
+    </div>
+  </div>
+
+  <div id="manager-view" class="hidden">
+    <div class="wrap">
+      <div class="srow" id="mstats"></div>
+      <div class="mtabs">
+        <button class="mtab active" onclick="mTab('ts')">Timesheets</button>
+        <button class="mtab" onclick="mTab('wk')">Workers</button>
+        <button class="mtab" onclick="mTab('pa')">Pending Approval</button>
+      </div>
+      <div id="ts-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <div class="stitle" style="margin:0">This Week's Timesheets</div>
+          <button class="btn bpdf" onclick="exportCSV()">⬇ Export CSV</button>
+        </div>
+        <div class="twrap"><table><thead><tr><th>Worker</th><th>Week</th><th>Total Hrs</th><th>OT</th><th>Status</th><th>Actions</th></tr></thead><tbody id="tstbody"></tbody></table></div>
+      </div>
+      <div id="wk-panel" class="hidden">
+        <div class="stitle">All Workers</div>
+        <div class="twrap"><table><thead><tr><th>Name</th><th>Email</th><th>Joined</th><th>Actions</th></tr></thead><tbody id="wktbody"></tbody></table></div>
+      </div>
+      <div id="pa-panel" class="hidden">
+        <div class="stitle">Pending Account Approvals</div>
+        <div class="twrap"><table><thead><tr><th>Name</th><th>Email</th><th>Requested</th><th>Actions</th></tr></thead><tbody id="patbody"></tbody></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="mo" id="dmodal">
+  <div class="mbox">
+    <button class="mclose" onclick="closeMo('dmodal')">✕</button>
+    <div class="mtitle" id="dtitle"></div>
+    <div id="dcontent"></div>
+    <div class="macts" id="dacts"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const SURL='https://pznhuvrazzuihsbjyahi.supabase.co';
+const SKEY='sb_publishable_8nsucv3dWSpbUxLLabx8yQ_kZHoAXX2';
+const {createClient}=supabase;
+const sb=createClient(SURL,SKEY);
+const DAYS=['Thursday','Friday','Saturday','Sunday','Monday','Tuesday','Wednesday'];
+
+let cUser=null,cProfile=null,cWeek=wkStart(new Date()),cTS=null,cEntries=[],saving=false;
+
+function wkStart(d){const dt=new Date(d),day=dt.getDay(),diff=(day-4+7)%7;dt.setDate(dt.getDate()-diff);dt.setHours(0,0,0,0);return dt}
+function fmtD(d){const dt=new Date(d);return`${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear()}`}
+function isoD(d){return d.toISOString().split('T')[0]}
+function show(id){document.getElementById(id).classList.remove('hidden')}
+function hide(id){document.getElementById(id).classList.add('hidden')}
+function toast(m,t=''){const e=document.getElementById('toast');e.textContent=m;e.className='show '+t;setTimeout(()=>e.className='',3000)}
+function msg(id,m,t){document.getElementById(id).innerHTML=m?`<div class="amsg ${t}">${m}</div>`:''}
+
+function swTab(t){
+  document.querySelectorAll('.atab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='login')||(i===1&&t==='signup')));
+  document.getElementById('lform').classList.toggle('hidden',t!=='login');
+  document.getElementById('sform').classList.toggle('hidden',t!=='signup');
+}
+
+async function doLogin(){
+  const em=document.getElementById('lem').value.trim(),pw=document.getElementById('lpw').value;
+  if(!em||!pw)return msg('lmsg','Please fill all fields','err');
+  msg('lmsg','Signing in...','info');
+  const{error}=await sb.auth.signInWithPassword({email:em,password:pw});
+  if(error)return msg('lmsg',error.message,'err');
+  msg('lmsg','','');
+}
+
+async function doSignup(){
+  const fn=document.getElementById('sfn').value.trim(),ln=document.getElementById('sln').value.trim();
+  const em=document.getElementById('sem').value.trim(),pw=document.getElementById('spw').value;
+  if(!fn||!ln||!em||!pw)return msg('smsg','Please fill all required fields','err');
+  if(pw.length<6)return msg('smsg','Password must be at least 6 characters','err');
+  msg('smsg','Creating account...','info');
+  const{error}=await sb.auth.signUp({email:em,password:pw,options:{data:{full_name:`${fn} ${ln}`,username:em.split('@')[0],role:'worker'}}});
+  if(error)return msg('smsg',error.message,'err');
+  msg('smsg','Account created! Waiting for manager approval before you can sign in.','ok');
+}
+
+async function doSignout(){await sb.auth.signOut();cUser=null;cProfile=null;hide('app');show('auth')}
+
+async function boot(){
+  const{data:{session}}=await sb.auth.getSession();
+  if(session)await loadUser(session.user);
+  else{hide('loading');show('auth')}
+  sb.auth.onAuthStateChange(async(ev,ses)=>{if(ev==='SIGNED_IN'&&ses){hide('auth');show('loading');await loadUser(ses.user)}});
+}
+
+async function loadUser(user){
+  cUser=user;
+  let{data:prof}=await sb.from('profiles').select('*').eq('id',user.id).single();
+  if(!prof){
+    const m=user.user_metadata||{};
+    await sb.from('profiles').insert({id:user.id,username:m.username||user.email.split('@')[0],full_name:m.full_name||user.email,role:'worker'});
+    ({data:prof}=await sb.from('profiles').select('*').eq('id',user.id).single());
+  }
+  cProfile=prof;
+  hide('loading');show('app');
+  document.getElementById('tname').textContent=prof.full_name||prof.username;
+  const rp=document.getElementById('trole');rp.textContent=prof.role;rp.className=`rpill ${prof.role}`;
+  if(prof.role==='manager'){show('manager-view');loadMgr()}
+  else if(prof.role==='worker'){show('worker-view');loadWeek()}
+  else{rp.textContent='pending';rp.className='rpill pending';show('pending-view')}
+}
+
+function chWeek(dir){cWeek=new Date(cWeek);cWeek.setDate(cWeek.getDate()+dir*7);loadWeek()}
+
+async function loadWeek(){
+  const we=new Date(cWeek);we.setDate(we.getDate()+6);
+  document.getElementById('wlabel').textContent=`${fmtD(cWeek)} — ${fmtD(we)}`;
+  let{data:ts}=await sb.from('timesheets').select('*').eq('user_id',cUser.id).eq('week_start',isoD(cWeek)).single();
+  cTS=ts||null;
+  let entries=[];
+  if(ts){const{data:ents}=await sb.from('timesheet_entries').select('*').eq('timesheet_id',ts.id).order('day_index');entries=ents||[]}
+  cEntries=entries;
+  document.getElementById('wnotes').value=ts?.notes||'';
+  renderDays();updateTotals();renderActs();updateWSBadge();
+}
+
+function renderDays(){
+  const list=document.getElementById('dlist');list.innerHTML='';
+  const isLocked=cTS?.status==='submitted'||cTS?.status==='approved';
+  for(let d=0;d<7;d++){
+    const dd=new Date(cWeek);dd.setDate(dd.getDate()+d);
+    const de=cEntries.filter(e=>e.day_index===d);
+    const tot=de.reduce((s,e)=>s+(parseFloat(e.hours)||0),0);
+    const codes=de.filter(e=>e.job_code).map(e=>e.job_code).join(', ');
+    const card=document.createElement('div');
+    card.id=`c${d}`;card.className=`dcard${tot>0?' hh':''}${(tot>0||de.length>0)?' exp':''}`;
+    card.innerHTML=`
+      <div class="dhead" onclick="togDay(${d})">
+        <div class="dtitle"><span class="dname">${DAYS[d]}</span><span class="ddate">${fmtD(dd)}</span></div>
+        <div class="dright">
+          <span class="dcodes" id="pr${d}">${codes}</span>
+          <span class="dhrs${tot===0?' z':''}" id="bd${d}">${tot>0?tot+' hrs':'—'}</span>
+          <span class="chev">▼</span>
+        </div>
+      </div>
+      <div class="dbody">
+        <div class="elist" id="el${d}"></div>
+        ${!isLocked?`<button class="badd" onclick="addE(${d})">+ Add job code</button>`:''}
+        <div class="dsub" id="sb${d}"></div>
+      </div>`;
+    list.appendChild(card);
+    if(de.length>0)de.forEach(e=>addERow(d,e.job_code,e.description,e.hours,isLocked));
+    else if(!isLocked)addERow(d,'','','',false);
+    updSub(d);
+  }
+}
+
+function addERow(d,jc='',dc='',hrs='',ro=false){
+  const c=document.getElementById(`el${d}`);
+  const div=document.createElement('div');div.className='erow';div.dataset.day=d;
+  if(ro){div.innerHTML=`
+    <div class="ef"><label>Job Code</label><div style="font-size:.88rem;padding:2px 0">${jc||'—'}</div></div>
+    <div class="ef df"><label>Description</label><div style="font-size:.88rem;color:var(--mut)">${dc||''}</div></div>
+    <div class="ef"><label>Hours</label><div style="font-size:.88rem;text-align:right">${hrs||0}</div></div>
+    <div></div>`;}
+  else{div.innerHTML=`
+    <div class="ef"><label>Job Code</label><input class="jc" type="text" value="${jc}" placeholder="e.g. 5325" oninput="debSave()"></div>
+    <div class="ef df"><label>Description</label><input class="dc" type="text" value="${dc}" placeholder="Task / location" oninput="debSave()"></div>
+    <div class="ef"><label>Hours</label><input class="hrs" type="number" value="${hrs}" min="0" max="24" step="0.5" placeholder="0" oninput="debSave();updSub(${d});updateTotals()"></div>
+    <button class="brem" onclick="this.closest('.erow').remove();debSave();updSub(${d});updateTotals()" title="Remove">✕</button>`;}
+  c.appendChild(div);
+}
+
+function addE(d){addERow(d,'','','',false);document.getElementById(`c${d}`).classList.add('exp')}
+function togDay(d){document.getElementById(`c${d}`).classList.toggle('exp')}
+
+function updSub(d){
+  const sb=document.getElementById(`sb${d}`);if(!sb)return;
+  let t=0;document.querySelectorAll(`.erow[data-day="${d}"] .hrs`).forEach(i=>t+=parseFloat(i.value)||0);
+  sb.innerHTML=t>0?`Day total: <strong>${t} hrs</strong>`:'';
+  const bd=document.getElementById(`bd${d}`);if(bd){bd.textContent=t>0?`${t} hrs`:'—';bd.className=`dhrs${t===0?' z':''}`}
+  const pr=document.getElementById(`pr${d}`);if(pr){const codes=Array.from(document.querySelectorAll(`.erow[data-day="${d}"] .jc`)).map(i=>i.value).filter(Boolean).join(', ');pr.textContent=codes}
+  document.getElementById(`c${d}`)?.classList.toggle('hh',t>0);
+}
+
+function updateTotals(){
+  let t=0;document.querySelectorAll('.erow .hrs').forEach(i=>t+=parseFloat(i.value)||0);
+  document.getElementById('tot').textContent=t;
+  document.getElementById('reg').textContent=Math.min(t,40);
+  document.getElementById('ovt').textContent=Math.max(0,t-40);
+}
+
+function updateWSBadge(){
+  const b=document.getElementById('wsbadge'),s=cTS?.status||'draft';
+  b.textContent=s.charAt(0).toUpperCase()+s.slice(1);b.className=`wsbadge ${s}`;
+}
+
+function renderActs(){
+  const bar=document.getElementById('wabar'),s=cTS?.status||'draft';bar.innerHTML='';
+  if(s==='draft')bar.innerHTML=`<button class="btn bsave" onclick="savTS()">💾 Save</button><button class="btn bsub" onclick="subTS()">✓ Submit Week</button><button class="btn bpdf" onclick="window.print()">🖨 Print</button>`;
+  else if(s==='submitted')bar.innerHTML=`<button class="btn bpdf" onclick="window.print()">🖨 Print</button><button class="btn buns" onclick="unsubTS()">↩ Unsubmit</button><span style="font-size:.78rem;color:var(--blu);padding:.65rem .5rem">⏳ Awaiting manager review</span>`;
+  else if(s==='approved')bar.innerHTML=`<button class="btn bpdf" onclick="window.print()">🖨 Print</button><span style="font-size:.78rem;color:var(--grn);padding:.65rem .5rem">✓ Approved by manager</span>`;
+}
+
+let svTimer=null;
+function debSave(){clearTimeout(svTimer);svTimer=setTimeout(savTS,1500)}
+
+function collectE(){
+  const entries=[];
+  for(let d=0;d<7;d++){
+    document.querySelectorAll(`.erow[data-day="${d}"]`).forEach(r=>{
+      const jc=r.querySelector('.jc')?.value||'';
+      const dc=r.querySelector('.dc')?.value||'';
+      const h=parseFloat(r.querySelector('.hrs')?.value)||0;
+      if(jc||h>0)entries.push({day_index:d,job_code:jc,description:dc,hours:h});
+    });
+  }
+  return entries;
+}
+
+async function savTS(){
+  if(saving)return;saving=true;
+  const entries=collectE();
+  const tot=entries.reduce((s,e)=>s+(parseFloat(e.hours)||0),0);
+  const notes=document.getElementById('wnotes').value;
+  const we=new Date(cWeek);we.setDate(we.getDate()+6);
+  try{
+    if(!cTS){
+      const{data:ts,error}=await sb.from('timesheets').insert({user_id:cUser.id,week_start:isoD(cWeek),week_end:isoD(we),total_hours:tot,status:'draft',notes}).select().single();
+      if(error)throw error;cTS=ts;
+    }else{await sb.from('timesheets').update({total_hours:tot,notes}).eq('id',cTS.id)}
+    await sb.from('timesheet_entries').delete().eq('timesheet_id',cTS.id);
+    if(entries.length>0)await sb.from('timesheet_entries').insert(entries.map(e=>({...e,timesheet_id:cTS.id})));
+    cEntries=entries;toast('Saved ✓','ok');
+  }catch(e){toast('Save failed: '+e.message,'er')}
+  saving=false;
+}
+
+async function subTS(){
+  await savTS();if(!cTS)return;
+  const{error}=await sb.from('timesheets').update({status:'submitted',submitted_at:new Date().toISOString()}).eq('id',cTS.id);
+  if(error)return toast('Error: '+error.message,'er');
+  cTS.status='submitted';toast('Timesheet submitted! ✓','ok');
+  renderDays();renderActs();updateWSBadge();
+}
+
+async function unsubTS(){
+  if(!cTS)return;
+  await sb.from('timesheets').update({status:'draft',submitted_at:null}).eq('id',cTS.id);
+  cTS.status='draft';toast('Timesheet unsubmitted','');
+  renderDays();renderActs();updateWSBadge();
+}
+
+async function loadMgr(){
+  const{data:workers}=await sb.from('profiles').select('*').eq('role','worker');
+  const{data:pending}=await sb.from('profiles').select('*').eq('role','pending');
+  const ws=wkStart(new Date());
+  const{data:wkTS}=await sb.from('timesheets').select('*, profiles(full_name)').gte('week_start',isoD(ws));
+  const sub=(wkTS||[]).filter(t=>t.status==='submitted'||t.status==='approved');
+
+  document.getElementById('mstats').innerHTML=`
+    <div class="scard y"><div class="sl">Total Workers</div><div class="sv">${workers?.length||0}</div></div>
+    <div class="scard b"><div class="sl">Submitted This Week</div><div class="sv">${sub.length}</div></div>
+    <div class="scard r"><div class="sl">Pending Approval</div><div class="sv">${pending?.length||0}</div></div>
+    <div class="scard g"><div class="sl">Total Hrs This Week</div><div class="sv">${(wkTS||[]).reduce((s,t)=>s+(parseFloat(t.total_hours)||0),0)}</div></div>`;
+
+  const tstb=document.getElementById('tstbody');
+  tstb.innerHTML=!(wkTS?.length)?'<tr><td colspan="6" class="empty">No timesheets this week yet.</td></tr>':
+    wkTS.map(t=>{const ot=Math.max(0,(t.total_hours||0)-40);return`<tr>
+      <td><strong>${t.profiles?.full_name||'—'}</strong></td>
+      <td style="color:var(--mut);font-size:.8rem">${t.week_start}</td>
+      <td><strong>${t.total_hours||0}</strong></td>
+      <td style="color:${ot>0?'var(--red)':'var(--mut)'}">${ot>0?'+'+ot:'—'}</td>
+      <td><span class="sbadge ${t.status}">${t.status}</span></td>
+      <td style="display:flex;gap:6px">
+        <button class="bsm bview" onclick="viewTS('${t.id}')">View</button>
+        ${t.status==='submitted'?`<button class="bsm bapp" onclick="appTS('${t.id}')">Approve</button>`:''}
+      </td></tr>`}).join('');
+
+  const wktb=document.getElementById('wktbody');
+  wktb.innerHTML=!(workers?.length)?'<tr><td colspan="4" class="empty">No workers yet.</td></tr>':
+    workers.map(w=>`<tr>
+      <td><strong>${w.full_name||w.username}</strong></td>
+      <td style="color:var(--mut);font-size:.82rem">${w.username}</td>
+      <td style="color:var(--mut);font-size:.78rem">${new Date(w.created_at).toLocaleDateString()}</td>
+      <td><button class="bsm brej" onclick="remW('${w.id}','${(w.full_name||w.username).replace(/'/g,"\\'")}')">Remove</button></td></tr>`).join('');
+
+  const patb=document.getElementById('patbody');
+  patb.innerHTML=!(pending?.length)?'<tr><td colspan="4" class="empty">No pending approvals.</td></tr>':
+    pending.map(u=>`<tr>
+      <td><strong>${u.full_name||u.username}</strong></td>
+      <td style="color:var(--mut);font-size:.82rem">${u.username}</td>
+      <td style="color:var(--mut);font-size:.78rem">${new Date(u.created_at).toLocaleDateString()}</td>
+      <td style="display:flex;gap:6px">
+        <button class="bsm bapp" onclick="appU('${u.id}','${(u.full_name||u.username).replace(/'/g,"\\'")}')">Approve</button>
+        <button class="bsm brej" onclick="rejU('${u.id}','${(u.full_name||u.username).replace(/'/g,"\\'")}')">Reject</button>
+      </td></tr>`).join('');
+}
+
+function mTab(t){
+  ['ts','wk','pa'].forEach(p=>{document.getElementById(p+'-panel').classList.toggle('hidden',p!==t)});
+  document.querySelectorAll('.mtab').forEach((el,i)=>el.classList.toggle('active',['ts','wk','pa'][i]===t));
+}
+
+async function appU(id,name){await sb.from('profiles').update({role:'worker'}).eq('id',id);toast(`${name} approved! ✓`,'ok');loadMgr()}
+async function rejU(id,name){if(!confirm(`Remove ${name}'s account?`))return;await sb.from('profiles').delete().eq('id',id);toast(`${name} removed`,'');loadMgr()}
+async function remW(id,name){if(!confirm(`Remove ${name}? This cannot be undone.`))return;await sb.from('profiles').delete().eq('id',id);toast(`${name} removed`,'');loadMgr()}
+async function appTS(id){await sb.from('timesheets').update({status:'approved'}).eq('id',id);toast('Approved ✓','ok');loadMgr()}
+
+async function viewTS(id){
+  const{data:ts}=await sb.from('timesheets').select('*, profiles(full_name)').eq('id',id).single();
+  const{data:ents}=await sb.from('timesheet_entries').select('*').eq('timesheet_id',id).order('day_index');
+  const grp={};(ents||[]).forEach(e=>{if(!grp[e.day_index])grp[e.day_index]=[];grp[e.day_index].push(e)});
+  let rows='';
+  Object.keys(grp).sort((a,b)=>a-b).forEach(d=>{grp[d].forEach((e,i)=>{rows+=`<tr><td>${i===0?DAYS[d]:''}</td><td>${e.job_code||'—'}</td><td style="color:var(--mut)">${e.description||''}</td><td>${e.hours}</td></tr>`})});
+  const ot=Math.max(0,(ts.total_hours||0)-40);
+  document.getElementById('dtitle').textContent=`${ts.profiles?.full_name} — Week of ${ts.week_start}`;
+  document.getElementById('dcontent').innerHTML=`
+    <div class="dmeta">
+      <div class="dmi"><span>Status</span><span class="sbadge ${ts.status}">${ts.status}</span></div>
+      <div class="dmi"><span>Total Hours</span><strong>${ts.total_hours}</strong></div>
+      <div class="dmi"><span>Overtime</span><strong style="color:var(--red)">${ot>0?'+'+ot:'—'}</strong></div>
+      ${ts.submitted_at?`<div class="dmi"><span>Submitted</span>${new Date(ts.submitted_at).toLocaleDateString()}</div>`:''}
+    </div>
+    <table class="dtable"><thead><tr><th>Day</th><th>Job Code</th><th>Description</th><th>Hours</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td colspan="3">Total</td><td>${ts.total_hours} hrs</td></tr></tfoot></table>
+    ${ts.notes?`<div style="font-size:.82rem;color:var(--mut);margin-top:.5rem"><strong style="color:var(--ink)">Notes:</strong> ${ts.notes}</div>`:''}`;
+  document.getElementById('dacts').innerHTML=ts.status==='submitted'?`<button class="btn bsub" onclick="appTS('${ts.id}');closeMo('dmodal');loadMgr()">✓ Approve</button>`:'';
+  openMo('dmodal');
+}
+
+async function exportCSV(){
+  const{data}=await sb.from('timesheets').select('*, profiles(full_name), timesheet_entries(*)');
+  if(!data?.length)return toast('No data','er');
+  let csv='Worker,Week Start,Week End,Day,Job Code,Description,Hours,Total Hours,Status\n';
+  data.forEach(ts=>{
+    if(ts.timesheet_entries?.length)ts.timesheet_entries.forEach(e=>{csv+=`"${ts.profiles?.full_name}","${ts.week_start}","${ts.week_end}","${DAYS[e.day_index]}","${e.job_code||''}","${e.description||''}","${e.hours}","${ts.total_hours}","${ts.status}"\n`});
+    else csv+=`"${ts.profiles?.full_name}","${ts.week_start}","${ts.week_end}","","","","0","${ts.total_hours}","${ts.status}"\n`;
+  });
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`timesheets_${new Date().toISOString().split('T')[0]}.csv`;a.click();
+  toast('CSV downloaded ✓','ok');
+}
+
+function openMo(id){document.getElementById(id).classList.add('open')}
+function closeMo(id){document.getElementById(id).classList.remove('open')}
+document.querySelectorAll('.mo').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open')}));
+
+boot();
+</script>
+</body>
+</html>
