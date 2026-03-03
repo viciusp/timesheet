@@ -134,6 +134,24 @@ tbody tr:hover td{background:var(--sur2)}
 .narea:focus{border-color:var(--acc)}
 .hint{font-size:.72rem;color:var(--mut);margin-top:6px}
 .stitle{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1.1rem;letter-spacing:.05em;text-transform:uppercase;color:var(--mut);margin-bottom:1.25rem}
+
+
+.qfopt{background:var(--sur2);border:1px solid var(--bdr);color:var(--ink);font-family:'Barlow',sans-serif;font-size:.82rem;font-weight:600;padding:.5rem .75rem;border-radius:6px;cursor:pointer;text-align:left;transition:all .15s;width:100%}
+.qfopt:hover{border-color:var(--acc);color:var(--acc)}
+.qfsel{width:100%;background:var(--sur2);border:1px solid var(--bdr);border-radius:6px;font-family:'Barlow',sans-serif;font-size:.88rem;color:var(--ink);padding:.5rem .75rem;outline:none;cursor:pointer}
+.qfsel:focus{border-color:var(--acc)}
+.qfsel option{background:var(--sur2)}
+
+.copybtn{display:flex;align-items:center;gap:1rem;background:var(--sur2);border:1px solid var(--bdr);border-radius:8px;padding:1rem;cursor:pointer;text-align:left;transition:all .15s;width:100%}
+.copybtn:hover{border-color:var(--acc)}
+.copybtn-icon{font-size:1.8rem;line-height:1}
+.copybtn-title{font-weight:700;font-size:.95rem;color:var(--ink);margin-bottom:2px}
+.copybtn-sub{font-size:.75rem;color:var(--mut)}
+.teammate-row{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1px solid var(--bdr);border-radius:6px;padding:.6rem .8rem;cursor:pointer;transition:all .15s}
+.teammate-row:hover{border-color:var(--acc);background:var(--sur2)}
+.teammate-name{font-weight:600;font-size:.9rem}
+.teammate-hrs{font-size:.75rem;color:var(--mut)}
+
 #toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--sur2);border:1px solid var(--bdr);color:var(--ink);padding:.7rem 1.4rem;border-radius:8px;font-size:.85rem;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1}#toast.ok{border-color:var(--grn);color:var(--grn)}#toast.er{border-color:var(--red);color:var(--red)}
 @media(max-width:600px){.srow{grid-template-columns:1fr 1fr}.tbar{grid-template-columns:1fr 1fr}.erow{grid-template-columns:1fr 60px 26px}.erow .ef.df{display:none}.topbar{padding:0 1rem}.wrap{padding:1rem}}
@@ -246,6 +264,35 @@ tbody tr:hover td{background:var(--sur2)}
     <div class="mtitle" id="dtitle"></div>
     <div id="dcontent"></div>
     <div class="macts" id="dacts"></div>
+  </div>
+</div>
+
+
+<div class="mo" id="copymodal">
+  <div class="mbox" style="max-width:420px">
+    <button class="mclose" onclick="closeMo('copymodal')">✕</button>
+    <div class="mtitle">Quick Fill</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:1.5rem">
+      <button class="copybtn" id="copy-lastweek-btn" onclick="copyLastWeek()">
+        <div class="copybtn-icon">📅</div>
+        <div>
+          <div class="copybtn-title">Copy Last Week</div>
+          <div class="copybtn-sub">Fill with your same job codes &amp; hours from last week</div>
+        </div>
+      </button>
+      <button class="copybtn" id="copy-teammate-btn" onclick="showTeammatePicker()">
+        <div class="copybtn-icon">👷</div>
+        <div>
+          <div class="copybtn-title">Copy from Teammate</div>
+          <div class="copybtn-sub">Fill with a coworker's entries for this week</div>
+        </div>
+      </button>
+    </div>
+    <div id="teammate-picker" class="hidden">
+      <div style="font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin-bottom:8px">Select Teammate</div>
+      <div id="teammate-list" style="display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto"></div>
+    </div>
+    <div id="copy-msg"></div>
   </div>
 </div>
 
@@ -374,7 +421,22 @@ function renderDays(){
       </div>
       <div class="dbody">
         <div class="elist" id="el${d}"></div>
-        ${!isLocked?`<button class="badd" onclick="addE(${d})">+ Add job code</button>`:''}
+        ${!isLocked?`
+        <div style="display:flex;gap:6px;margin-bottom:4px">
+          <button class="badd" onclick="addE(${d})" style="flex:1">+ Add job code</button>
+          <button class="badd" onclick="openDayFill(${d})" style="flex:1;border-color:var(--acc);color:var(--acc)">⚡ Quick Fill</button>
+        </div>
+        <div id="qf${d}" class="hidden" style="background:var(--bg);border:1px solid var(--bdr);border-radius:8px;padding:.75rem;margin-bottom:6px">
+          <div style="font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);margin-bottom:.6rem">Quick Fill — ${DAYS[d]}</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <button class="qfopt" onclick="copyDayLastWeek(${d})">📅 Copy my last week (${DAYS[d]})</button>
+            <div style="font-size:.72rem;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-top:2px">Copy from teammate:</div>
+            <select class="qfsel" id="qfsel${d}" onchange="copyDayFromTeammate(${d},this.value)">
+              <option value="">— Pick a coworker —</option>
+            </select>
+          </div>
+        </div>
+        `:''}
         <div class="dsub" id="sb${d}"></div>
       </div>`;
     list.appendChild(card);
@@ -574,6 +636,74 @@ async function exportCSV(){
 function openMo(id){document.getElementById(id).classList.add('open')}
 function closeMo(id){document.getElementById(id).classList.remove('open')}
 document.querySelectorAll('.mo').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open')}));
+
+
+// ── Quick Fill (per day) ──────────────────────────────────────────────────────
+let teammateCache = null;
+
+async function openDayFill(d){
+  const panel = document.getElementById(`qf${d}`);
+  const isOpen = !panel.classList.contains('hidden');
+  // Close all other panels first
+  for(let i=0;i<7;i++) document.getElementById(`qf${i}`)?.classList.add('hidden');
+  if(isOpen) return;
+  panel.classList.remove('hidden');
+
+  // Load teammates into dropdown
+  const sel = document.getElementById(`qfsel${d}`);
+  if(sel.options.length <= 1){
+    sel.innerHTML = '<option value="">Loading...</option>';
+    if(!teammateCache){
+      const{data:workers}=await sb.from('profiles').select('*').in('role',['worker','manager']).neq('id',cUser.id);
+      const{data:weekTS}=await sb.from('timesheets').select('*').in('user_id',(workers||[]).map(w=>w.id)).eq('week_start',isoD(cWeek));
+      teammateCache={workers:workers||[],weekTS:weekTS||[]};
+    }
+    sel.innerHTML = '<option value="">— Pick a coworker —</option>';
+    teammateCache.workers.forEach(w=>{
+      const ts=teammateCache.weekTS.find(t=>t.user_id===w.id);
+      const opt=document.createElement('option');
+      opt.value=w.id;
+      opt.textContent=(w.full_name||w.username)+(ts?' ('+ts.total_hours+' hrs)':' (no timesheet yet)');
+      opt.disabled=!ts;
+      sel.appendChild(opt);
+    });
+  }
+}
+
+async function copyDayLastWeek(d){
+  const prevWeek=new Date(cWeek);prevWeek.setDate(prevWeek.getDate()-7);
+  const{data:ts}=await sb.from('timesheets').select('*').eq('user_id',cUser.id).eq('week_start',isoD(prevWeek)).single();
+  if(!ts) return toast('No timesheet found for last week','er');
+  const{data:ents}=await sb.from('timesheet_entries').select('*').eq('timesheet_id',ts.id).eq('day_index',d);
+  if(!ents?.length) return toast(`No entries last ${DAYS[d]}`,'er');
+  applyDayEntries(d, ents);
+  document.getElementById(`qf${d}`).classList.add('hidden');
+  toast(`${DAYS[d]} filled from last week ✓`,'ok');
+}
+
+async function copyDayFromTeammate(d, userId){
+  if(!userId) return;
+  const ts=teammateCache?.weekTS.find(t=>t.user_id===userId);
+  if(!ts) return toast('That teammate has no timesheet this week','er');
+  const{data:ents}=await sb.from('timesheet_entries').select('*').eq('timesheet_id',ts.id).eq('day_index',d);
+  if(!ents?.length) return toast(`No entries for that teammate on ${DAYS[d]}`,'er');
+  const worker=teammateCache.workers.find(w=>w.id===userId);
+  applyDayEntries(d, ents);
+  document.getElementById(`qf${d}`).classList.add('hidden');
+  document.getElementById(`qfsel${d}`).value='';
+  toast(`${DAYS[d]} copied from ${worker?.full_name||'teammate'} ✓`,'ok');
+}
+
+function applyDayEntries(d, ents){
+  // Clear existing entries for this day
+  document.getElementById(`el${d}`).innerHTML='';
+  // Add copied entries
+  ents.forEach(e=>addERow(d, e.job_code, e.description, e.hours, false));
+  updSub(d);
+  updateTotals();
+  debSave();
+  document.getElementById(`c${d}`).classList.add('exp');
+}
 
 boot();
 </script>
