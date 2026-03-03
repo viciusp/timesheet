@@ -391,7 +391,7 @@ function chWeek(dir){cWeek=new Date(cWeek);cWeek.setDate(cWeek.getDate()+dir*7);
 async function loadWeek(){
   const we=new Date(cWeek);we.setDate(we.getDate()+6);
   document.getElementById('wlabel').textContent=`${fmtD(cWeek)} — ${fmtD(we)}`;
-  let{data:ts}=await sb.from('timesheets').select('*').eq('user_id',cUser.id).eq('week_start',isoD(cWeek)).single();
+  let{data:ts}=await sb.from('timesheets').select('*').eq('user_id',cUser.id).eq('week_start',isoD(cWeek)).order('created_at',{ascending:false}).limit(1).maybeSingle();
   cTS=ts||null;
   let entries=[];
   if(ts){const{data:ents}=await sb.from('timesheet_entries').select('*').eq('timesheet_id',ts.id).order('day_index');entries=ents||[]}
@@ -672,7 +672,7 @@ async function openDayFill(d){
 
 async function copyDayLastWeek(d){
   const prevWeek=new Date(cWeek);prevWeek.setDate(prevWeek.getDate()-7);
-  const{data:ts}=await sb.from('timesheets').select('*').eq('user_id',cUser.id).eq('week_start',isoD(prevWeek)).single();
+  const{data:ts}=await sb.from('timesheets').select('*').eq('user_id',cUser.id).eq('week_start',isoD(prevWeek)).order('created_at',{ascending:false}).limit(1).maybeSingle();
   if(!ts) return toast('No timesheet found for last week','er');
   const{data:ents}=await sb.from('timesheet_entries').select('*').eq('timesheet_id',ts.id).eq('day_index',d);
   if(!ents?.length) return toast(`No entries last ${DAYS[d]}`,'er');
