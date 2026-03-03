@@ -300,8 +300,27 @@ async function boot(){
   const{data:{session}}=await sb.auth.getSession();
   if(session)await loadUser(session.user);
   else{hide('loading');show('auth')}
-  sb.auth.onAuthStateChange(async(ev,ses)=>{if(ev==='SIGNED_IN'&&ses){hide('auth');show('loading');await loadUser(ses.user)}});
+  sb.auth.onAuthStateChange(async(ev,ses)=>{
+    if(ev==='SIGNED_IN'&&ses&&!cUser){hide('auth');show('loading');await loadUser(ses.user)}
+    if(ev==='SIGNED_OUT'){hide('app');show('auth');cUser=null;cProfile=null;}
+  });
 }
+
+document.addEventListener('visibilitychange',async()=>{
+  if(document.visibilityState==='visible'){
+    hide('loading');
+    if(cUser){
+      const{data:{session}}=await sb.auth.getSession();
+      if(!session){hide('app');show('auth');cUser=null;cProfile=null;}
+    } else if(!document.getElementById('auth').classList.contains('hidden')){
+      // already on auth screen, do nothing
+    } else {
+      const{data:{session}}=await sb.auth.getSession();
+      if(session&&!cUser)await loadUser(session.user);
+      else if(!session){hide('app');show('auth');}
+    }
+  }
+});
 
 async function loadUser(user){
   cUser=user;
