@@ -668,25 +668,21 @@ async function openDayFill(d){
   if(isOpen) return;
   panel.classList.remove('hidden');
 
-  // Load teammates into dropdown
+  // Always reload fresh every time panel opens
   const sel = document.getElementById(`qfsel${d}`);
-  if(sel.options.length <= 1){
-    sel.innerHTML = '<option value="">Loading...</option>';
-    // Always reload fresh - no caching so new timesheets show up immediately
-    sel.innerHTML = '<option value="">Loading...</option>';
-    const{data:workers}=await sb.from('profiles').select('*').in('role',['worker','manager']).neq('id',cUser.id);
-    const{data:weekTS}=await sb.from('timesheets').select('*').in('user_id',(workers||[]).map(w=>w.id)).eq('week_start',isoD(cWeek));
-    teammateCache={workers:workers||[],weekTS:weekTS||[]};
-    sel.innerHTML = '<option value="">— Pick a coworker —</option>';
-    teammateCache.workers.forEach(w=>{
-      const ts=teammateCache.weekTS.find(t=>t.user_id===w.id);
-      const opt=document.createElement('option');
-      opt.value=w.id;
-      opt.textContent=(w.full_name||w.username)+(ts?' ('+ts.total_hours+' hrs this week)':' — no timesheet yet');
-      opt.disabled=false;  // show all workers, warn at copy time if no entries
-      sel.appendChild(opt);
-    });
-  }
+  sel.innerHTML = '<option value="">Loading...</option>';
+  const{data:workers}=await sb.from('profiles').select('*').in('role',['worker','manager']).neq('id',cUser.id);
+  const{data:weekTS}=await sb.from('timesheets').select('*').in('user_id',(workers||[]).map(w=>w.id)).eq('week_start',isoD(cWeek));
+  teammateCache={workers:workers||[],weekTS:weekTS||[]};
+  sel.innerHTML = '<option value="">— Pick a coworker —</option>';
+  teammateCache.workers.forEach(w=>{
+    const ts=teammateCache.weekTS.find(t=>t.user_id===w.id);
+    const opt=document.createElement('option');
+    opt.value=w.id;
+    opt.textContent=(w.full_name||w.username)+(ts?' ('+ts.total_hours+' hrs this week)':' — no timesheet yet');
+    opt.disabled=!ts;
+    sel.appendChild(opt);
+  });
 }
 
 async function copyDayLastWeek(d){
