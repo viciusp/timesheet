@@ -341,7 +341,7 @@ async function doSignup(){
   msg('smsg','Account created! Waiting for manager approval before you can sign in.','ok');
 }
 
-async function doSignout(){await sb.auth.signOut();cUser=null;cProfile=null;hide('app');show('auth')}
+async function doSignout(){await sb.auth.signOut();cUser=null;cProfile=null;cTS=null;cEntries=[];teammateCache=null;hide('manager-view');hide('worker-view');hide('pending-view');hide('app');show('auth')}
 
 async function boot(){
   const{data:{session}}=await sb.auth.getSession();
@@ -349,7 +349,7 @@ async function boot(){
   else{hide('loading');show('auth')}
   sb.auth.onAuthStateChange(async(ev,ses)=>{
     if(ev==='SIGNED_IN'&&ses&&!cUser){hide('auth');show('loading');await loadUser(ses.user)}
-    if(ev==='SIGNED_OUT'){hide('app');show('auth');cUser=null;cProfile=null;}
+    if(ev==='SIGNED_OUT'){cUser=null;cProfile=null;cTS=null;cEntries=[];teammateCache=null;hide('manager-view');hide('worker-view');hide('pending-view');hide('app');show('auth');}
   });
 }
 
