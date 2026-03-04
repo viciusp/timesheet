@@ -381,6 +381,8 @@ async function loadUser(user){
   hide('loading');show('app');
   document.getElementById('tname').textContent=prof.full_name||prof.username;
   const rp=document.getElementById('trole');rp.textContent=prof.role;rp.className=`rpill ${prof.role}`;
+  // Always hide all views first before showing the right one
+  hide('manager-view');hide('worker-view');hide('pending-view');
   if(prof.role==='manager'){show('manager-view');loadMgr()}
   else if(prof.role==='worker'){show('worker-view');loadWeek()}
   else{rp.textContent='pending';rp.className='rpill pending';show('pending-view')}
