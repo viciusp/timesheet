@@ -336,7 +336,7 @@ async function doSignup(){
   if(!fn||!ln||!em||!pw)return msg('smsg','Please fill all required fields','err');
   if(pw.length<6)return msg('smsg','Password must be at least 6 characters','err');
   msg('smsg','Creating account...','info');
-  const{error}=await sb.auth.signUp({email:em,password:pw,options:{data:{full_name:`${fn} ${ln}`,username:em.split('@')[0],role:'worker'}}});
+  const{error}=await sb.auth.signUp({email:em,password:pw,options:{data:{full_name:`${fn} ${ln}`,username:em.split('@')[0],role:'worker',email:em}}});
   if(error)return msg('smsg',error.message,'err');
   msg('smsg','Account created! Waiting for manager approval before you can sign in.','ok');
 }
@@ -374,7 +374,7 @@ async function loadUser(user){
   let{data:prof}=await sb.from('profiles').select('*').eq('id',user.id).single();
   if(!prof){
     const m=user.user_metadata||{};
-    await sb.from('profiles').insert({id:user.id,username:m.username||user.email.split('@')[0],full_name:m.full_name||user.email,role:'worker'});
+    await sb.from('profiles').insert({id:user.id,username:m.username||user.email.split('@')[0],full_name:m.full_name||user.email,email:user.email,role:'worker'});
     ({data:prof}=await sb.from('profiles').select('*').eq('id',user.id).single());
   }
   cProfile=prof;
@@ -581,15 +581,15 @@ async function loadMgr(){
   wktb.innerHTML=!(workers?.length)?'<tr><td colspan="4" class="empty">No workers yet.</td></tr>':
     workers.map(w=>`<tr>
       <td><strong>${w.full_name||w.username}</strong></td>
-      <td style="color:var(--mut);font-size:.82rem">${w.username}</td>
+      <td style="color:var(--mut);font-size:.82rem">${w.email||w.username}</td>
       <td style="color:var(--mut);font-size:.78rem">${new Date(w.created_at).toLocaleDateString()}</td>
-      <td><button class="bsm brej" onclick="remW('${w.id}','${(w.full_name||w.username).replace(/'/g,"\\'")}')">Remove</button></td></tr>`).join('');
+      <td><button class="bsm brej" data-id="${w.id}" data-name="${w.full_name||w.username}" onclick="remW(this.dataset.id,this.dataset.name)">Remove</button></td></tr>`).join('');
 
   const patb=document.getElementById('patbody');
   patb.innerHTML=!(pending?.length)?'<tr><td colspan="4" class="empty">No pending approvals.</td></tr>':
     pending.map(u=>`<tr>
       <td><strong>${u.full_name||u.username}</strong></td>
-      <td style="color:var(--mut);font-size:.82rem">${u.username}</td>
+      <td style="color:var(--mut);font-size:.82rem">${u.email||u.username}</td>
       <td style="color:var(--mut);font-size:.78rem">${new Date(u.created_at).toLocaleDateString()}</td>
       <td style="display:flex;gap:6px">
         <button class="bsm bapp" onclick="appU('${u.id}','${(u.full_name||u.username).replace(/'/g,"\\'")}')">Approve</button>
@@ -604,7 +604,17 @@ function mTab(t){
 
 async function appU(id,name){await sb.from('profiles').update({role:'worker'}).eq('id',id);toast(`${name} approved! ✓`,'ok');loadMgr()}
 async function rejU(id,name){if(!confirm(`Remove ${name}'s account?`))return;await sb.from('profiles').delete().eq('id',id);toast(`${name} removed`,'');loadMgr()}
-async function remW(id,name){if(!confirm(`Remove ${name}? This cannot be undone.`))return;await sb.from('profiles').delete().eq('id',id);toast(`${name} removed`,'');loadMgr()}
+async function remW(id,name){
+  if(!confirm(`Remove ${name}? This will delete all their timesheets too.`))return;
+  const{data:ts}=await sb.from('timesheets').select('id').eq('user_id',id);
+  if(ts?.length){
+    await sb.from('timesheet_entries').delete().in('timesheet_id',ts.map(t=>t.id));
+    await sb.from('timesheets').delete().eq('user_id',id);
+  }
+  await sb.from('profiles').delete().eq('id',id);
+  toast(`${name} removed`,'ok');
+  loadMgr();
+}
 async function appTS(id){await sb.from('timesheets').update({status:'approved'}).eq('id',id);toast('Approved ✓','ok');loadMgr()}
 
 async function viewTS(id){
