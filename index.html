@@ -672,7 +672,11 @@ async function openDayFill(d){
   const sel = document.getElementById(`qfsel${d}`);
   sel.innerHTML = '<option value="">Loading...</option>';
   const{data:workers}=await sb.from('profiles').select('*').in('role',['worker','manager']).neq('id',cUser.id);
-  const{data:weekTS}=await sb.from('timesheets').select('*').in('user_id',(workers||[]).map(w=>w.id)).eq('week_start',isoD(cWeek));
+  const weekStart=isoD(cWeek);
+  console.log('QF workers found:',workers);
+  console.log('QF week_start looking for:',weekStart);
+  const{data:weekTS}=await sb.from('timesheets').select('*').in('user_id',(workers||[]).map(w=>w.id)).eq('week_start',weekStart);
+  console.log('QF timesheets found:',weekTS);
   teammateCache={workers:workers||[],weekTS:weekTS||[]};
   sel.innerHTML = '<option value="">— Pick a coworker —</option>';
   teammateCache.workers.forEach(w=>{
