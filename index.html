@@ -475,7 +475,11 @@ function updSub(d){
 }
 
 function updateTotals(){
-  let t=0;document.querySelectorAll('.erow .hrs').forEach(i=>t+=parseFloat(i.value)||0);
+  let t=0;
+  // Try reading from inputs first (draft mode)
+  document.querySelectorAll('.erow .hrs').forEach(i=>t+=parseFloat(i.value)||0);
+  // If no inputs found (submitted/approved), read from cEntries
+  if(t===0 && cEntries?.length) t=cEntries.reduce((s,e)=>s+(parseFloat(e.hours)||0),0);
   document.getElementById('tot').textContent=t;
   document.getElementById('reg').textContent=Math.min(t,40);
   document.getElementById('ovt').textContent=Math.max(0,t-40);
