@@ -200,7 +200,7 @@ tbody tr:hover td{background:var(--sur2)}
       <div class="ubadge"><strong id="tname"></strong></div>
       <span class="rpill" id="trole"></span>
       <span id=\"savestate\" class=\"sstate hidden\">Saved</span>
-      <button class="bso" onclick="doSignout()">Sign Out</button>
+      <button class="bso" onclick="safeSignout()">Sign Out</button>
     </div>
   </div>
 
@@ -393,6 +393,10 @@ async function doSignup(){
   msg('smsg','Account created! Waiting for manager approval before you can sign in.','ok');
 }
 
+function safeSignout(){
+  if(isDirty){openLeaveModal('signout');return;}
+  doSignout();
+}
 async function doSignout(){await sb.auth.signOut();cUser=null;cProfile=null;cTS=null;cEntries=[];teammateCache=null;hide('manager-view');hide('worker-view');hide('pending-view');hide('app');show('auth')}
 
 async function boot(){
@@ -446,7 +450,13 @@ async function loadUser(user){
   else{rp.textContent='pending';rp.className='rpill pending';show('pending-view')}
 }
 
-function chWeek(dir){cWeek=new Date(cWeek);cWeek.setDate(cWeek.getDate()+dir*7);loadWeek()}
+function chWeek(dir){
+  if(isDirty){
+    openLeaveModal(dir===-1?'chWeek_prev':'chWeek_next');
+    return;
+  }
+  cWeek=new Date(cWeek);cWeek.setDate(cWeek.getDate()+dir*7);loadWeek();
+}
 
 async function loadWeek(){
   const we=new Date(cWeek);we.setDate(we.getDate()+6);
@@ -797,13 +807,19 @@ function closeLeaveModal(){
 
 function leaveWithoutSaving(){
   isDirty = false;
-  window.location = pendingNavigation || "/";
+  closeLeaveModal();
+  if(pendingNavigation === 'chWeek_prev') chWeek(-1);
+  else if(pendingNavigation === 'chWeek_next') chWeek(1);
+  else if(pendingNavigation === 'signout') doSignout();
 }
 
 async function saveAndLeave(){
   await savTS();
   isDirty = false;
-  window.location = pendingNavigation || "/";
+  closeLeaveModal();
+  if(pendingNavigation === 'chWeek_prev') chWeek(-1);
+  else if(pendingNavigation === 'chWeek_next') chWeek(1);
+  else if(pendingNavigation === 'signout') doSignout();
 }
   
   boot();
