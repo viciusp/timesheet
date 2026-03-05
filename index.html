@@ -301,6 +301,23 @@ tbody tr:hover td{background:var(--sur2)}
   </div>
 </div>
 
+  <div id="leaveModal" class="mo">
+  <div class="mbox">
+    <div class="mtitle">Unsaved Changes</div>
+
+    <p style="margin-bottom:16px;color:var(--mut)">
+      You have unsaved changes. What would you like to do?
+    </p>
+
+    <div class="macts">
+      <button class="btn bsub" onclick="saveAndLeave()">Save</button>
+      <button class="btn buns" onclick="leaveWithoutSaving()">Leave</button>
+      <button class="btn bsave" onclick="closeLeaveModal()">Cancel</button>
+    </div>
+
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
