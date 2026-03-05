@@ -783,7 +783,30 @@ function applyDayEntries(d, ents){
   document.getElementById(`c${d}`).classList.add('exp');
 }
 
-boot();
+let pendingNavigation = null;
+
+function openLeaveModal(url){
+  pendingNavigation = url;
+  document.getElementById("leaveModal").classList.add("open");
+}
+
+function closeLeaveModal(){
+  pendingNavigation = null;
+  document.getElementById("leaveModal").classList.remove("open");
+}
+
+function leaveWithoutSaving(){
+  isDirty = false;
+  window.location = pendingNavigation || "/";
+}
+
+async function saveAndLeave(){
+  await savTS();
+  isDirty = false;
+  window.location = pendingNavigation || "/";
+}
+  
+  boot();
 
 // Mark unsaved changes on any editable field
 document.addEventListener('input',(e)=>{
