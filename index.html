@@ -41,6 +41,10 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow',sans-serif;min-h
 .rpill.manager{background:rgba(245,158,11,.12);color:var(--acc)}
 .rpill.worker{background:rgba(16,185,129,.12);color:var(--grn)}
 .rpill.pending{background:rgba(239,68,68,.12);color:var(--red)}
+.sstate{font-size:.65rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:20px;border:1px solid var(--bdr);color:var(--mut);background:var(--sur2)}
+.sstate.saved{border-color:rgba(16,185,129,.35);color:var(--grn)}
+.sstate.saving{border-color:rgba(59,130,246,.35);color:var(--blu)}
+.sstate.unsaved{border-color:rgba(239,68,68,.35);color:var(--red)}
 .bso{background:none;border:1px solid var(--bdr);color:var(--mut);font-family:'Barlow',sans-serif;font-size:.75rem;font-weight:600;padding:5px 12px;border-radius:5px;cursor:pointer;transition:all .15s}
 .bso:hover{border-color:var(--red);color:var(--red)}
 .wrap{padding:1.5rem;max-width:1000px;margin:0 auto}
@@ -195,6 +199,7 @@ tbody tr:hover td{background:var(--sur2)}
     <div class="tright">
       <div class="ubadge"><strong id="tname"></strong></div>
       <span class="rpill" id="trole"></span>
+      <span id=\"savestate\" class=\"sstate hidden\">Saved</span>
       <button class="bso" onclick="doSignout()">Sign Out</button>
     </div>
   </div>
@@ -306,6 +311,36 @@ const sb=createClient(SURL,SKEY);
 const DAYS=['Thursday','Friday','Saturday','Sunday','Monday','Tuesday','Wednesday'];
 
 let cUser=null,cProfile=null,cWeek=wkStart(new Date()),cTS=null,cEntries=[],saving=false;
+let isDirty=false;
+let autosaveTimer=null;
+const AUTOSAVE_MS=900; // debounce autosave
+
+function setSaveState(state){
+  const el=document.getElementById('savestate');
+  if(!el||el.classList.contains('hidden'))return;
+  if(state==='Saved'){el.textContent='Saved';el.className='sstate saved'}
+  else if(state==='Saving'){el.textContent='Saving…';el.className='sstate saving'}
+  else if(state==='Unsaved'){el.textContent='Unsaved';el.className='sstate unsaved'}
+  else{el.textContent=state||'';el.className='sstate'}
+}
+
+function markDirty(){
+  if(cTS?.status==='submitted'||cTS?.status==='approved')return; // locked
+  isDirty=true;
+  setSaveState('Unsaved');
+  if(autosaveTimer)clearTimeout(autosaveTimer);
+  autosaveTimer=setTimeout(()=>{autosaveTimer=null;autoSaveIfNeeded();},AUTOSAVE_MS);
+}
+
+async function autoSaveIfNeeded(){
+  if(!isDirty)return;
+  await savTS(true);
+}
+
+window.addEventListener('beforeunload',(e)=>{
+  if(isDirty){e.preventDefault();e.returnValue='';}
+});
+
 
 function wkStart(d){const dt=new Date(d),day=dt.getDay(),diff=(day-4+7)%7;dt.setDate(dt.getDate()-diff);dt.setHours(0,0,0,0);return dt}
 function fmtD(d){const dt=new Date(d);return`${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear()}`}
@@ -381,6 +416,12 @@ async function loadUser(user){
   hide('loading');show('app');
   document.getElementById('tname').textContent=prof.full_name||prof.username;
   const rp=document.getElementById('trole');rp.textContent=prof.role;rp.className=`rpill ${prof.role}`;
+  // Save-state badge only matters for workers
+  const ss=document.getElementById('savestate');
+  if(ss){
+    if(prof.role==='worker'){ss.classList.remove('hidden');setSaveState('Saved');}
+    else ss.classList.add('hidden');
+  }
   // Always hide all views first before showing the right one
   hide('manager-view');hide('worker-view');hide('pending-view');
   if(prof.role==='manager'){show('manager-view');loadMgr()}
@@ -400,6 +441,7 @@ async function loadWeek(){
   cEntries=entries;
   document.getElementById('wnotes').value=ts?.notes||'';
   renderDays();updateTotals();renderActs();updateWSBadge();
+  isDirty=false;setSaveState('Saved');
 }
 
 function renderDays(){
@@ -502,8 +544,7 @@ function renderActs(){
   else if(s==='approved')bar.innerHTML=`<button class="btn bpdf" onclick="window.print()">🖨 Print</button><span style="font-size:.78rem;color:var(--grn);padding:.65rem .5rem">✓ Approved by manager</span>`;
 }
 
-let svTimer=null;
-function debSave(){clearTimeout(svTimer);svTimer=setTimeout(savTS,1500)}
+function debSave(){markDirty();}
 
 function collectE(){
   const entries=[];
@@ -518,8 +559,9 @@ function collectE(){
   return entries;
 }
 
-async function savTS(){
+async function savTS(silent=false){
   if(saving)return;saving=true;
+  setSaveState('Saving');
   const entries=collectE();
   const tot=entries.reduce((s,e)=>s+(parseFloat(e.hours)||0),0);
   const notes=document.getElementById('wnotes').value;
@@ -531,8 +573,8 @@ async function savTS(){
     }else{await sb.from('timesheets').update({total_hours:tot,notes}).eq('id',cTS.id)}
     await sb.from('timesheet_entries').delete().eq('timesheet_id',cTS.id);
     if(entries.length>0)await sb.from('timesheet_entries').insert(entries.map(e=>({...e,timesheet_id:cTS.id})));
-    cEntries=entries;toast('Saved ✓','ok');
-  }catch(e){toast('Save failed: '+e.message,'er')}
+    cEntries=entries;isDirty=false;setSaveState('Saved');if(!silent)toast('Saved ✓','ok');
+  }catch(e){setSaveState('Unsaved');toast('Save failed: '+e.message,'er')}
   saving=false;
 }
 
@@ -540,14 +582,14 @@ async function subTS(){
   await savTS();if(!cTS)return;
   const{error}=await sb.from('timesheets').update({status:'submitted',submitted_at:new Date().toISOString()}).eq('id',cTS.id);
   if(error)return toast('Error: '+error.message,'er');
-  cTS.status='submitted';toast('Timesheet submitted! ✓','ok');
+  cTS.status='submitted';isDirty=false;setSaveState('Saved');toast('Timesheet submitted! ✓','ok');
   renderDays();renderActs();updateWSBadge();
 }
 
 async function unsubTS(){
   if(!cTS)return;
   await sb.from('timesheets').update({status:'draft',submitted_at:null}).eq('id',cTS.id);
-  cTS.status='draft';toast('Timesheet unsubmitted','');
+  cTS.status='draft';isDirty=false;setSaveState('Saved');toast('Timesheet unsubmitted','');
   renderDays();renderActs();updateWSBadge();
 }
 
@@ -725,6 +767,13 @@ function applyDayEntries(d, ents){
 }
 
 boot();
+
+// Mark unsaved changes on any editable field
+document.addEventListener('input',(e)=>{
+  if(!cUser||cProfile?.role!=='worker')return;
+  if(e.target.matches('input, textarea, select'))markDirty();
+});
+
 </script>
 </body>
 </html>
