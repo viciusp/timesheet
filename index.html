@@ -41,10 +41,6 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow',sans-serif;min-h
 .rpill.manager{background:rgba(245,158,11,.12);color:var(--acc)}
 .rpill.worker{background:rgba(16,185,129,.12);color:var(--grn)}
 .rpill.pending{background:rgba(239,68,68,.12);color:var(--red)}
-.sstate{font-size:.65rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:20px;border:1px solid var(--bdr);color:var(--mut);background:var(--sur2)}
-.sstate.saved{border-color:rgba(16,185,129,.35);color:var(--grn)}
-.sstate.saving{border-color:rgba(59,130,246,.35);color:var(--blu)}
-.sstate.unsaved{border-color:rgba(239,68,68,.35);color:var(--red)}
 .bso{background:none;border:1px solid var(--bdr);color:var(--mut);font-family:'Barlow',sans-serif;font-size:.75rem;font-weight:600;padding:5px 12px;border-radius:5px;cursor:pointer;transition:all .15s}
 .bso:hover{border-color:var(--red);color:var(--red)}
 .wrap{padding:1.5rem;max-width:1000px;margin:0 auto}
@@ -199,8 +195,7 @@ tbody tr:hover td{background:var(--sur2)}
     <div class="tright">
       <div class="ubadge"><strong id="tname"></strong></div>
       <span class="rpill" id="trole"></span>
-      <span id=\"savestate\" class=\"sstate hidden\">Saved</span>
-      <button class="bso" onclick="safeSignout()">Sign Out</button>
+      <button class="bso" onclick="doSignout()">Sign Out</button>
     </div>
   </div>
 
@@ -301,20 +296,16 @@ tbody tr:hover td{background:var(--sur2)}
   </div>
 </div>
 
-  <div id="leaveModal" class="mo">
+<div id="leaveModal" class="mo">
   <div class="mbox">
+    <button class="mclose" onclick="closeLeaveModal()" aria-label="Close">×</button>
     <div class="mtitle">Unsaved Changes</div>
-
-    <p style="margin-bottom:16px;color:var(--mut)">
-      You have unsaved changes. What would you like to do?
-    </p>
-
+    <p style="margin-bottom:16px;color:var(--mut)">You have unsaved changes. What would you like to do?</p>
     <div class="macts">
       <button class="btn bsub" onclick="saveAndLeave()">Save</button>
       <button class="btn buns" onclick="leaveWithoutSaving()">Leave</button>
       <button class="btn bsave" onclick="closeLeaveModal()">Cancel</button>
     </div>
-
   </div>
 </div>
 
@@ -328,36 +319,39 @@ const sb=createClient(SURL,SKEY);
 const DAYS=['Thursday','Friday','Saturday','Sunday','Monday','Tuesday','Wednesday'];
 
 let cUser=null,cProfile=null,cWeek=wkStart(new Date()),cTS=null,cEntries=[],saving=false;
+
+// --- Unsaved-changes protection (custom modal for in-app nav + browser warning for refresh/close) ---
 let isDirty=false;
-let autosaveTimer=null;
-const AUTOSAVE_MS=900; // debounce autosave
+let pendingAction=null;
 
-function setSaveState(state){
-  const el=document.getElementById('savestate');
-  if(!el||el.classList.contains('hidden'))return;
-  if(state==='Saved'){el.textContent='Saved';el.className='sstate saved'}
-  else if(state==='Saving'){el.textContent='Saving…';el.className='sstate saving'}
-  else if(state==='Unsaved'){el.textContent='Unsaved';el.className='sstate unsaved'}
-  else{el.textContent=state||'';el.className='sstate'}
+function openLeaveModal(actionFn){
+  pendingAction=actionFn;
+  const m=document.getElementById('leaveModal');
+  if(m) m.classList.add('open');
 }
-
+function closeLeaveModal(){
+  pendingAction=null;
+  const m=document.getElementById('leaveModal');
+  if(m) m.classList.remove('open');
+}
+function leaveWithoutSaving(){
+  isDirty=false;
+  const fn=pendingAction;
+  closeLeaveModal();
+  if(typeof fn==='function') fn();
+}
+async function saveAndLeave(){
+  await savTS();
+  isDirty=false;
+  const fn=pendingAction;
+  closeLeaveModal();
+  if(typeof fn==='function') fn();
+}
 function markDirty(){
-  if(cTS?.status==='submitted'||cTS?.status==='approved')return; // locked
+  // Don't mark dirty if timesheet is locked
+  if(cTS && (cTS.status==='submitted' || cTS.status==='approved')) return;
   isDirty=true;
-  setSaveState('Unsaved');
-  if(autosaveTimer)clearTimeout(autosaveTimer);
-  autosaveTimer=setTimeout(()=>{autosaveTimer=null;autoSaveIfNeeded();},AUTOSAVE_MS);
 }
-
-async function autoSaveIfNeeded(){
-  if(!isDirty)return;
-  await savTS(true);
-}
-
-window.addEventListener('beforeunload',(e)=>{
-  if(isDirty){e.preventDefault();e.returnValue='';}
-});
-
 
 function wkStart(d){const dt=new Date(d),day=dt.getDay(),diff=(day-4+7)%7;dt.setDate(dt.getDate()-diff);dt.setHours(0,0,0,0);return dt}
 function fmtD(d){const dt=new Date(d);return`${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear()}`}
@@ -393,11 +387,9 @@ async function doSignup(){
   msg('smsg','Account created! Waiting for manager approval before you can sign in.','ok');
 }
 
-function safeSignout(){
-  if(isDirty){openLeaveModal('signout');return;}
-  doSignout();
-}
-async function doSignout(){await sb.auth.signOut();cUser=null;cProfile=null;cTS=null;cEntries=[];teammateCache=null;hide('manager-view');hide('worker-view');hide('pending-view');hide('app');show('auth')}
+async function doSignout(){
+  if(isDirty) return openLeaveModal(()=>doSignout());
+  await sb.auth.signOut();cUser=null;cProfile=null;cTS=null;cEntries=[];teammateCache=null;hide('manager-view');hide('worker-view');hide('pending-view');hide('app');show('auth')}
 
 async function boot(){
   const{data:{session}}=await sb.auth.getSession();
@@ -437,12 +429,6 @@ async function loadUser(user){
   hide('loading');show('app');
   document.getElementById('tname').textContent=prof.full_name||prof.username;
   const rp=document.getElementById('trole');rp.textContent=prof.role;rp.className=`rpill ${prof.role}`;
-  // Save-state badge only matters for workers
-  const ss=document.getElementById('savestate');
-  if(ss){
-    if(prof.role==='worker'){ss.classList.remove('hidden');setSaveState('Saved');}
-    else ss.classList.add('hidden');
-  }
   // Always hide all views first before showing the right one
   hide('manager-view');hide('worker-view');hide('pending-view');
   if(prof.role==='manager'){show('manager-view');loadMgr()}
@@ -451,11 +437,8 @@ async function loadUser(user){
 }
 
 function chWeek(dir){
-  if(isDirty){
-    openLeaveModal(dir===-1?'chWeek_prev':'chWeek_next');
-    return;
-  }
-  cWeek=new Date(cWeek);cWeek.setDate(cWeek.getDate()+dir*7);loadWeek();
+  if(isDirty) return openLeaveModal(()=>chWeek(dir));
+  cWeek=new Date(cWeek);cWeek.setDate(cWeek.getDate()+dir*7);loadWeek()
 }
 
 async function loadWeek(){
@@ -468,7 +451,6 @@ async function loadWeek(){
   cEntries=entries;
   document.getElementById('wnotes').value=ts?.notes||'';
   renderDays();updateTotals();renderActs();updateWSBadge();
-  isDirty=false;setSaveState('Saved');
 }
 
 function renderDays(){
@@ -571,7 +553,8 @@ function renderActs(){
   else if(s==='approved')bar.innerHTML=`<button class="btn bpdf" onclick="window.print()">🖨 Print</button><span style="font-size:.78rem;color:var(--grn);padding:.65rem .5rem">✓ Approved by manager</span>`;
 }
 
-function debSave(){markDirty();}
+let svTimer=null;
+function debSave(){markDirty();clearTimeout(svTimer);svTimer=setTimeout(savTS,1500)}
 
 function collectE(){
   const entries=[];
@@ -586,9 +569,8 @@ function collectE(){
   return entries;
 }
 
-async function savTS(silent=false){
+async function savTS(){
   if(saving)return;saving=true;
-  setSaveState('Saving');
   const entries=collectE();
   const tot=entries.reduce((s,e)=>s+(parseFloat(e.hours)||0),0);
   const notes=document.getElementById('wnotes').value;
@@ -600,8 +582,8 @@ async function savTS(silent=false){
     }else{await sb.from('timesheets').update({total_hours:tot,notes}).eq('id',cTS.id)}
     await sb.from('timesheet_entries').delete().eq('timesheet_id',cTS.id);
     if(entries.length>0)await sb.from('timesheet_entries').insert(entries.map(e=>({...e,timesheet_id:cTS.id})));
-    cEntries=entries;isDirty=false;setSaveState('Saved');if(!silent)toast('Saved ✓','ok');
-  }catch(e){setSaveState('Unsaved');toast('Save failed: '+e.message,'er')}
+    cEntries=entries;isDirty=false;toast('Saved ✓','ok');
+  }catch(e){toast('Save failed: '+e.message,'er')}
   saving=false;
 }
 
@@ -609,14 +591,14 @@ async function subTS(){
   await savTS();if(!cTS)return;
   const{error}=await sb.from('timesheets').update({status:'submitted',submitted_at:new Date().toISOString()}).eq('id',cTS.id);
   if(error)return toast('Error: '+error.message,'er');
-  cTS.status='submitted';isDirty=false;setSaveState('Saved');toast('Timesheet submitted! ✓','ok');
+  cTS.status='submitted';toast('Timesheet submitted! ✓','ok');
   renderDays();renderActs();updateWSBadge();
 }
 
 async function unsubTS(){
   if(!cTS)return;
   await sb.from('timesheets').update({status:'draft',submitted_at:null}).eq('id',cTS.id);
-  cTS.status='draft';isDirty=false;setSaveState('Saved');toast('Timesheet unsubmitted','');
+  cTS.status='draft';toast('Timesheet unsubmitted','');
   renderDays();renderActs();updateWSBadge();
 }
 
@@ -742,10 +724,7 @@ async function openDayFill(d){
   sel.innerHTML = '<option value="">Loading...</option>';
   const{data:workers}=await sb.from('profiles').select('*').in('role',['worker','manager']).neq('id',cUser.id);
   const weekStart=isoD(cWeek);
-  console.log('QF workers found:',workers);
-  console.log('QF week_start looking for:',weekStart);
   const{data:weekTS}=await sb.from('timesheets').select('*').in('user_id',(workers||[]).map(w=>w.id)).eq('week_start',weekStart);
-  console.log('QF timesheets found:',weekTS);
   teammateCache={workers:workers||[],weekTS:weekTS||[]};
   sel.innerHTML = '<option value="">— Pick a coworker —</option>';
   teammateCache.workers.forEach(w=>{
@@ -793,43 +772,13 @@ function applyDayEntries(d, ents){
   document.getElementById(`c${d}`).classList.add('exp');
 }
 
-let pendingNavigation = null;
+boot();
 
-function openLeaveModal(url){
-  pendingNavigation = url;
-  document.getElementById("leaveModal").classList.add("open");
-}
+// Mark dirty on any edits
+document.addEventListener('input',(e)=>{ if(e.target.matches('input, textarea, select')) markDirty(); });
 
-function closeLeaveModal(){
-  pendingNavigation = null;
-  document.getElementById("leaveModal").classList.remove("open");
-}
-
-function leaveWithoutSaving(){
-  isDirty = false;
-  closeLeaveModal();
-  if(pendingNavigation === 'chWeek_prev') chWeek(-1);
-  else if(pendingNavigation === 'chWeek_next') chWeek(1);
-  else if(pendingNavigation === 'signout') doSignout();
-}
-
-async function saveAndLeave(){
-  await savTS();
-  isDirty = false;
-  closeLeaveModal();
-  if(pendingNavigation === 'chWeek_prev') chWeek(-1);
-  else if(pendingNavigation === 'chWeek_next') chWeek(1);
-  else if(pendingNavigation === 'signout') doSignout();
-}
-  
-  boot();
-
-// Mark unsaved changes on any editable field
-document.addEventListener('input',(e)=>{
-  if(!cUser||cProfile?.role!=='worker')return;
-  if(e.target.matches('input, textarea, select'))markDirty();
-});
-
+// Browser warning (refresh/close/back)
+window.addEventListener('beforeunload',(e)=>{ if(!isDirty) return; e.preventDefault(); e.returnValue=''; });
 </script>
 </body>
 </html>
