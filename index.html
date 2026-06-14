@@ -182,6 +182,7 @@ tbody tr:hover td{background:var(--sur2)}
       </div>
       <div class="fg"><label>Email</label><input type="email" id="sem" placeholder="your@email.com"></div>
       <div class="fg"><label>Phone (optional)</label><input type="tel" id="sph" placeholder="(555) 000-0000"></div>
+      <div class="fg"><label>Company Role</label><select id="scr"><option value="helper">Helper</option><option value="foreman">Foreman</option></select></div>
       <div class="fg"><label>Password</label><input type="password" id="spw" placeholder="Min 6 characters"></div>
       <button class="btnp" onclick="doSignup()">Create Account</button>
       <div id="smsg"></div>
@@ -378,15 +379,14 @@ async function doLogin(){
 
 async function doSignup(){
   const fn=document.getElementById('sfn').value.trim(),ln=document.getElementById('sln').value.trim();
-  const em=document.getElementById('sem').value.trim(),pw=document.getElementById('spw').value;
+  const em=document.getElementById('sem').value.trim(),phone=document.getElementById('sph').value.trim(),companyRole=document.getElementById('scr').value,pw=document.getElementById('spw').value;
   if(!fn||!ln||!em||!pw)return msg('smsg','Please fill all required fields','err');
   if(pw.length<6)return msg('smsg','Password must be at least 6 characters','err');
   msg('smsg','Creating account...','info');
-  const{error}=await sb.auth.signUp({email:em,password:pw,options:{data:{full_name:`${fn} ${ln}`,username:em.split('@')[0],role:'worker',email:em}}});
+  const{error}=await sb.auth.signUp({email:em,password:pw,options:{data:{full_name:`${fn} ${ln}`,username:em.split('@')[0],role:'worker',email:em,phone:phone,company_role:companyRole,status:'pending'}}});
   if(error)return msg('smsg',error.message,'err');
   msg('smsg','Account created! Waiting for manager approval before you can sign in.','ok');
 }
-
 async function doSignout(){
   if(isDirty) return openLeaveModal(()=>doSignout());
   await sb.auth.signOut();cUser=null;cProfile=null;cTS=null;cEntries=[];teammateCache=null;hide('manager-view');hide('worker-view');hide('pending-view');hide('app');show('auth')}
@@ -422,15 +422,16 @@ async function loadUser(user){
   let{data:prof}=await sb.from('profiles').select('*').eq('id',user.id).single();
   if(!prof){
     const m=user.user_metadata||{};
-    await sb.from('profiles').insert({id:user.id,username:m.username||user.email.split('@')[0],full_name:m.full_name||user.email,email:user.email,role:'worker'});
+    await sb.from('profiles').insert({id:user.id,username:m.username||user.email.split('@')[0],full_name:m.full_name||user.email,email:user.email,phone:m.phone||null,role:m.role||'worker',company_role:m.company_role||'helper',status:m.status||'pending'});
     ({data:prof}=await sb.from('profiles').select('*').eq('id',user.id).single());
   }
   cProfile=prof;
   hide('loading');show('app');
   document.getElementById('tname').textContent=prof.full_name||prof.username;
-  const rp=document.getElementById('trole');rp.textContent=prof.role;rp.className=`rpill ${prof.role}`;
+  const rp=document.getElementById('trole');rp.textContent=prof.company_role||prof.role;rp.className=`rpill ${prof.role}`;
   // Always hide all views first before showing the right one
   hide('manager-view');hide('worker-view');hide('pending-view');
+  if(prof.status!=='active'){rp.textContent=prof.status||'pending';rp.className='rpill pending';show('pending-view');return}
   if(prof.role==='manager'){show('manager-view');loadMgr()}
   else if(prof.role==='worker'){show('worker-view');loadWeek()}
   else{rp.textContent='pending';rp.className='rpill pending';show('pending-view')}
@@ -603,8 +604,8 @@ async function unsubTS(){
 }
 
 async function loadMgr(){
-  const{data:workers}=await sb.from('profiles').select('*').eq('role','worker');
-  const{data:pending}=await sb.from('profiles').select('*').eq('role','pending');
+  const{data:workers}=await sb.from('profiles').select('*').eq('role','worker').eq('status','active');
+  const{data:pending}=await sb.from('profiles').select('*').eq('status','pending');
   const ws=wkStart(new Date());
   const{data:wkTS}=await sb.from('timesheets').select('*, profiles(full_name)').gte('week_start',isoD(ws));
   const sub=(wkTS||[]).filter(t=>t.status==='submitted'||t.status==='approved');
@@ -629,22 +630,22 @@ async function loadMgr(){
       </td></tr>`}).join('');
 
   const wktb=document.getElementById('wktbody');
-  wktb.innerHTML=!(workers?.length)?'<tr><td colspan="4" class="empty">No workers yet.</td></tr>':
+  wktb.innerHTML=!(workers?.length)?'<tr><td colspan="4" class="empty">No active workers yet.</td></tr>':
     workers.map(w=>`<tr>
-      <td><strong>${w.full_name||w.username}</strong></td>
-      <td style="color:var(--mut);font-size:.82rem">${w.email||w.username}</td>
+      <td><strong>${w.full_name||w.username}</strong><br><span style="color:var(--mut);font-size:.75rem">${w.company_role||'helper'}</span></td>
+      <td style="color:var(--mut);font-size:.82rem">${w.email||w.username}<br>${w.phone||''}</td>
       <td style="color:var(--mut);font-size:.78rem">${new Date(w.created_at).toLocaleDateString()}</td>
-      <td><button class="bsm brej" data-id="${w.id}" data-name="${w.full_name||w.username}" onclick="remW(this.dataset.id,this.dataset.name)">Remove</button></td></tr>`).join('');
+      <td><button class="bsm brej" data-id="${w.id}" data-name="${w.full_name||w.username}" onclick="remW(this.dataset.id,this.dataset.name)">Deactivate</button></td></tr>`).join('');
 
   const patb=document.getElementById('patbody');
   patb.innerHTML=!(pending?.length)?'<tr><td colspan="4" class="empty">No pending approvals.</td></tr>':
     pending.map(u=>`<tr>
-      <td><strong>${u.full_name||u.username}</strong></td>
-      <td style="color:var(--mut);font-size:.82rem">${u.email||u.username}</td>
+      <td><strong>${u.full_name||u.username}</strong><br><span style="color:var(--mut);font-size:.75rem">${u.company_role||'helper'}</span></td>
+      <td style="color:var(--mut);font-size:.82rem">${u.email||u.username}<br>${u.phone||''}</td>
       <td style="color:var(--mut);font-size:.78rem">${new Date(u.created_at).toLocaleDateString()}</td>
       <td style="display:flex;gap:6px">
-        <button class="bsm bapp" onclick="appU('${u.id}','${(u.full_name||u.username).replace(/'/g,"\\'")}')">Approve</button>
-        <button class="bsm brej" onclick="rejU('${u.id}','${(u.full_name||u.username).replace(/'/g,"\\'")}')">Reject</button>
+        <button class="bsm bapp" onclick="appU('${u.id}','${(u.full_name||u.username).replace(/'/g,"\'")}')">Approve</button>
+        <button class="bsm brej" onclick="rejU('${u.id}','${(u.full_name||u.username).replace(/'/g,"\'")}')">Reject</button>
       </td></tr>`).join('');
 }
 
@@ -653,17 +654,12 @@ function mTab(t){
   document.querySelectorAll('.mtab').forEach((el,i)=>el.classList.toggle('active',['ts','wk','pa'][i]===t));
 }
 
-async function appU(id,name){await sb.from('profiles').update({role:'worker'}).eq('id',id);toast(`${name} approved! ✓`,'ok');loadMgr()}
-async function rejU(id,name){if(!confirm(`Remove ${name}'s account?`))return;await sb.from('profiles').delete().eq('id',id);toast(`${name} removed`,'');loadMgr()}
+async function appU(id,name){await sb.from('profiles').update({role:'worker',status:'active'}).eq('id',id);toast(`${name} approved! ✓`,'ok');loadMgr()}
+async function rejU(id,name){if(!confirm(`Reject ${name}'s account?`))return;await sb.from('profiles').update({status:'inactive'}).eq('id',id);toast(`${name} rejected`,'');loadMgr()}
 async function remW(id,name){
-  if(!confirm(`Remove ${name}? This will delete all their timesheets too.`))return;
-  const{data:ts}=await sb.from('timesheets').select('id').eq('user_id',id);
-  if(ts?.length){
-    await sb.from('timesheet_entries').delete().in('timesheet_id',ts.map(t=>t.id));
-    await sb.from('timesheets').delete().eq('user_id',id);
-  }
-  await sb.from('profiles').delete().eq('id',id);
-  toast(`${name} removed`,'ok');
+  if(!confirm(`Deactivate ${name}? They will not be able to use the app, but old timesheets stay saved.`))return;
+  await sb.from('profiles').update({status:'inactive'}).eq('id',id);
+  toast(`${name} deactivated`,'ok');
   loadMgr();
 }
 async function appTS(id){await sb.from('timesheets').update({status:'approved'}).eq('id',id);toast('Approved ✓','ok');loadMgr()}
@@ -722,7 +718,7 @@ async function openDayFill(d){
   // Always reload fresh every time panel opens
   const sel = document.getElementById(`qfsel${d}`);
   sel.innerHTML = '<option value="">Loading...</option>';
-  const{data:workers}=await sb.from('profiles').select('*').in('role',['worker','manager']).neq('id',cUser.id);
+  const{data:workers}=await sb.from('profiles').select('*').in('role',['worker','manager']).eq('status','active').neq('id',cUser.id);
   const weekStart=isoD(cWeek);
   const{data:weekTS}=await sb.from('timesheets').select('*').in('user_id',(workers||[]).map(w=>w.id)).eq('week_start',weekStart);
   teammateCache={workers:workers||[],weekTS:weekTS||[]};
