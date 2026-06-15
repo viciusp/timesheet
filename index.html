@@ -886,10 +886,10 @@ async function appTS(id){
   toast('Approved ✓','ok');loadMgr()
 }
 async function unlockTS(id){
-  if(!confirm('Unlock this approved timesheet and return it to submitted status? The worker will still not be able to edit until it is unsubmitted.')) return;
+  if(!confirm('Unlock this approved timesheet and return it to draft status so the worker can edit it again?')) return;
   const {data:ts}=await sb.from('timesheets').select('id,status,week_start,user_id,profiles(full_name)').eq('id',id).single();
-  await sb.from('timesheets').update({status:'submitted'}).eq('id',id);
-  await logAudit('timesheet_unlocked','timesheet',id,ts?.profiles?.full_name||'Worker',{week_start:ts?.week_start,status:{from:ts?.status||'approved',to:'submitted'}});
+  await sb.from('timesheets').update({status:'draft',submitted_at:null}).eq('id',id);
+  await logAudit('timesheet_unlocked','timesheet',id,ts?.profiles?.full_name||'Worker',{week_start:ts?.week_start,status:{from:ts?.status||'approved',to:'draft'}});
   toast('Timesheet unlocked','ok');loadMgr();
 }
 
