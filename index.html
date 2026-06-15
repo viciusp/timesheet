@@ -330,6 +330,39 @@ tbody tr:hover td{background:var(--sur2)}
   </div>
 </div>
 
+
+<div class="mo" id="weditmodal">
+  <div class="mbox" style="max-width:520px">
+    <button class="mclose" onclick="closeMo('weditmodal')">✕</button>
+    <div class="mtitle">Edit Worker</div>
+    <input type="hidden" id="we-id">
+    <div class="fg"><label>Full Name</label><input type="text" id="we-name"></div>
+    <div class="fg"><label>Email</label><input type="email" id="we-email" readonly></div>
+    <div class="fg"><label>Phone</label><input type="tel" id="we-phone"></div>
+    <div class="frow">
+      <div class="fg"><label>Company Role</label>
+        <select id="we-company-role">
+          <option value="helper">Helper</option>
+          <option value="foreman">Foreman</option>
+        </select>
+      </div>
+      <div class="fg"><label>Account Status</label>
+        <select id="we-status">
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="pending">Pending</option>
+        </select>
+      </div>
+    </div>
+    <div class="macts">
+      <button class="btn bsub" onclick="saveWorkerEdit()">Save Worker</button>
+      <button class="btn bsave" onclick="closeMo('weditmodal')">Cancel</button>
+    </div>
+    <div id="we-msg"></div>
+    <p class="hint">Email is read-only here because login email belongs to Supabase Auth. This edit updates the worker profile row.</p>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -340,6 +373,7 @@ const sb=createClient(SURL,SKEY);
 const DAYS=['Thursday','Friday','Saturday','Sunday','Monday','Tuesday','Wednesday'];
 
 let cUser=null,cProfile=null,cWeek=wkStart(new Date()),cTS=null,cEntries=[],saving=false;
+let mgrWorkers=[];
 
 // --- Unsaved-changes protection (custom modal for in-app nav + browser warning for refresh/close) ---
 let isDirty=false;
@@ -652,7 +686,8 @@ async function unsubTS(){
 }
 
 async function loadMgr(){
-  const{data:workers}=await sb.from('profiles').select('*').eq('role','worker').eq('status','active');
+  const{data:workers}=await sb.from('profiles').select('*').eq('role','worker').eq('status','active').order('full_name');
+  mgrWorkers=workers||[];
   const{data:pending}=await sb.from('profiles').select('*').eq('status','pending');
   const ws=wkStart(new Date());
   const{data:wkTS}=await sb.from('timesheets').select('*, profiles(full_name)').gte('week_start',isoD(ws));
@@ -683,7 +718,10 @@ async function loadMgr(){
       <td><strong>${w.full_name||w.username}</strong><br><span style="color:var(--mut);font-size:.75rem">${w.company_role||'helper'}</span></td>
       <td style="color:var(--mut);font-size:.82rem">${w.email||w.username}<br>${w.phone||''}</td>
       <td style="color:var(--mut);font-size:.78rem">${new Date(w.created_at).toLocaleDateString()}</td>
-      <td><button class="bsm brej" data-id="${w.id}" data-name="${w.full_name||w.username}" onclick="remW(this.dataset.id,this.dataset.name)">Deactivate</button></td></tr>`).join('');
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="bsm bview" data-id="${w.id}" onclick="openWorkerEdit(this.dataset.id)">Edit</button>
+        <button class="bsm brej" data-id="${w.id}" data-name="${w.full_name||w.username}" onclick="remW(this.dataset.id,this.dataset.name)">Deactivate</button>
+      </td></tr>`).join('');
 
   const patb=document.getElementById('patbody');
   patb.innerHTML=!(pending?.length)?'<tr><td colspan="4" class="empty">No pending approvals.</td></tr>':
@@ -700,6 +738,51 @@ async function loadMgr(){
 function mTab(t){
   ['ts','wk','pa'].forEach(p=>{document.getElementById(p+'-panel').classList.toggle('hidden',p!==t)});
   document.querySelectorAll('.mtab').forEach((el,i)=>el.classList.toggle('active',['ts','wk','pa'][i]===t));
+}
+
+
+function openWorkerEdit(id){
+  const w=mgrWorkers.find(x=>x.id===id);
+  if(!w) return toast('Worker not found','er');
+  document.getElementById('we-id').value=w.id;
+  document.getElementById('we-name').value=w.full_name||w.username||'';
+  document.getElementById('we-email').value=w.email||'';
+  document.getElementById('we-phone').value=w.phone||'';
+  document.getElementById('we-company-role').value=w.company_role||'helper';
+  document.getElementById('we-status').value=w.status||'active';
+  document.getElementById('we-msg').innerHTML='';
+  openMo('weditmodal');
+}
+
+async function saveWorkerEdit(){
+  const id=document.getElementById('we-id').value;
+  const fullName=document.getElementById('we-name').value.trim();
+  const phone=document.getElementById('we-phone').value.trim();
+  const companyRole=document.getElementById('we-company-role').value;
+  const status=document.getElementById('we-status').value;
+  const msgBox=document.getElementById('we-msg');
+
+  if(!id) return msgBox.innerHTML='<div class="amsg err">Missing worker ID.</div>';
+  if(!fullName) return msgBox.innerHTML='<div class="amsg err">Full name is required.</div>';
+
+  msgBox.innerHTML='<div class="amsg info">Saving...</div>';
+
+  const {error}=await sb.from('profiles').update({
+    full_name:fullName,
+    phone:phone||null,
+    company_role:companyRole,
+    status
+  }).eq('id',id).eq('role','worker');
+
+  if(error){
+    msgBox.innerHTML=`<div class="amsg err">${error.message}</div>`;
+    return;
+  }
+
+  msgBox.innerHTML='<div class="amsg ok">Worker updated.</div>';
+  toast('Worker updated ✓','ok');
+  closeMo('weditmodal');
+  loadMgr();
 }
 
 async function appU(id,name){await sb.from('profiles').update({role:'worker',status:'active'}).eq('id',id);toast(`${name} approved! ✓`,'ok');loadMgr()}
