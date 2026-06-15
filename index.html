@@ -419,12 +419,40 @@ document.addEventListener('visibilitychange',async()=>{
 
 async function loadUser(user){
   cUser=user;
+  const m=user.user_metadata||{};
   let{data:prof}=await sb.from('profiles').select('*').eq('id',user.id).single();
+
   if(!prof){
-    const m=user.user_metadata||{};
-    await sb.from('profiles').insert({id:user.id,username:m.username||user.email.split('@')[0],full_name:m.full_name||user.email,email:user.email,phone:m.phone||null,role:m.role||'worker',company_role:m.company_role||'helper',status:m.status||'pending'});
+    await sb.from('profiles').insert({
+      id:user.id,
+      username:m.username||user.email.split('@')[0],
+      full_name:m.full_name||user.email,
+      email:m.email||user.email,
+      phone:m.phone||null,
+      role:m.role||'worker',
+      company_role:m.company_role||'helper',
+      status:m.status||'pending'
+    });
     ({data:prof}=await sb.from('profiles').select('*').eq('id',user.id).single());
+  } else {
+    // Backfill missing profile fields from Supabase Auth metadata.
+    // This fixes accounts where a database trigger created the profile row first
+    // but left email, phone, company_role, or status blank.
+    const updates={};
+    if(!prof.email && (m.email||user.email)) updates.email=m.email||user.email;
+    if(!prof.phone && m.phone) updates.phone=m.phone;
+    if(!prof.company_role && m.company_role) updates.company_role=m.company_role;
+    if(!prof.status && m.status) updates.status=m.status;
+    if((!prof.full_name || prof.full_name===prof.username || prof.full_name===prof.email) && m.full_name) updates.full_name=m.full_name;
+    if(!prof.username && m.username) updates.username=m.username;
+    if(!prof.role && m.role) updates.role=m.role;
+
+    if(Object.keys(updates).length){
+      await sb.from('profiles').update(updates).eq('id',user.id);
+      ({data:prof}=await sb.from('profiles').select('*').eq('id',user.id).single());
+    }
   }
+
   cProfile=prof;
   hide('loading');show('app');
   document.getElementById('tname').textContent=prof.full_name||prof.username;
