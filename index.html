@@ -998,20 +998,15 @@ function csvSafe(v){return `"${String(v??'').replace(/"/g,'""')}"`}
 async function exportPayrollCSV(){
   if(!payrollRows.length) await loadPayroll();
   if(!payrollRows.length) return toast('No payroll data for this week','er');
-  let csv=`Payroll Export - Week ${payrollTitle()}
-`;
-  csv+='Employee,Role,Regular Hours,Overtime Hours,Total Hours,Status
-';
+  let csv=`Payroll Export - Week ${payrollTitle()}\n`;
+  csv+='Employee,Role,Regular Hours,Overtime Hours,Total Hours,Status\n';
   payrollRows.forEach(r=>{
-    csv += [r.employee,r.role,fmtMoneyHours(r.regular),fmtMoneyHours(r.overtime),fmtMoneyHours(r.total),r.status].map(csvSafe).join(',')+'
-';
+    csv += [r.employee,r.role,fmtMoneyHours(r.regular),fmtMoneyHours(r.overtime),fmtMoneyHours(r.total),r.status].map(csvSafe).join(',')+'\n';
   });
   const total=payrollRows.reduce((s,r)=>s+r.total,0);
   const regular=payrollRows.reduce((s,r)=>s+r.regular,0);
   const overtime=payrollRows.reduce((s,r)=>s+r.overtime,0);
-  csv += `
-Totals,,${fmtMoneyHours(regular)},${fmtMoneyHours(overtime)},${fmtMoneyHours(total)},
-`;
+  csv += `\nTotals,,${fmtMoneyHours(regular)},${fmtMoneyHours(overtime)},${fmtMoneyHours(total)},\n`;
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download=`payroll_${isoD(mPayrollWeek)}_to_${isoD(payrollWeekEnd())}.csv`;
@@ -1019,6 +1014,7 @@ Totals,,${fmtMoneyHours(regular)},${fmtMoneyHours(overtime)},${fmtMoneyHours(tot
   await logAudit('payroll_exported','payroll',isoD(mPayrollWeek),`Payroll ${payrollTitle()}`,{week_start:isoD(mPayrollWeek),week_end:isoD(payrollWeekEnd()),workers:payrollRows.length,total_hours:fmtMoneyHours(total),regular_hours:fmtMoneyHours(regular),overtime_hours:fmtMoneyHours(overtime)});
   toast('Payroll CSV downloaded ✓','ok');
 }
+
 
 async function exportCSV(){
   const{data}=await sb.from('timesheets').select('*, profiles(full_name), timesheet_entries(*)');
