@@ -240,6 +240,7 @@ tbody tr:hover td{background:var(--sur2)}
         <button class="mtab active" onclick="mTab('ts')">Timesheets</button>
         <button class="mtab" onclick="mTab('wk')">Workers</button>
         <button class="mtab" onclick="mTab('pa')">Pending Approval</button>
+        <button class="mtab" onclick="mTab('au')">Audit Log</button>
       </div>
       <div id="ts-panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
@@ -250,11 +251,18 @@ tbody tr:hover td{background:var(--sur2)}
       </div>
       <div id="wk-panel" class="hidden">
         <div class="stitle">All Workers</div>
-        <div class="twrap"><table><thead><tr><th>Name</th><th>Email</th><th>Joined</th><th>Actions</th></tr></thead><tbody id="wktbody"></tbody></table></div>
+        <div class="twrap"><table><thead><tr><th>Name</th><th>Email / Phone</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead><tbody id="wktbody"></tbody></table></div>
       </div>
       <div id="pa-panel" class="hidden">
         <div class="stitle">Pending Account Approvals</div>
         <div class="twrap"><table><thead><tr><th>Name</th><th>Email</th><th>Requested</th><th>Actions</th></tr></thead><tbody id="patbody"></tbody></table></div>
+      </div>
+      <div id="au-panel" class="hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <div class="stitle" style="margin:0">Recent Audit Log</div>
+          <button class="btn bsave" onclick="loadAuditLog()">Refresh</button>
+        </div>
+        <div class="twrap"><table><thead><tr><th>When</th><th>Manager</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody id="autbody"></tbody></table></div>
       </div>
     </div>
   </div>
@@ -374,6 +382,7 @@ const DAYS=['Thursday','Friday','Saturday','Sunday','Monday','Tuesday','Wednesda
 
 let cUser=null,cProfile=null,cWeek=wkStart(new Date()),cTS=null,cEntries=[],saving=false;
 let mgrWorkers=[];
+let auditAvailable=true;
 
 // --- Unsaved-changes protection (custom modal for in-app nav + browser warning for refresh/close) ---
 let isDirty=false;
@@ -685,6 +694,62 @@ async function unsubTS(){
   renderDays();renderActs();updateWSBadge();
 }
 
+
+function safeJSON(v){
+  try{return JSON.stringify(v||{})}catch(e){return '{}'}
+}
+function fmtAuditDetails(details){
+  if(!details) return '—';
+  if(typeof details==='string'){
+    try{details=JSON.parse(details)}catch(e){return details||'—'}
+  }
+  const keys=Object.keys(details);
+  if(!keys.length) return '—';
+  return keys.map(k=>{
+    const v=details[k];
+    if(v && typeof v==='object' && ('from' in v || 'to' in v)){
+      return `${k}: ${v.from??'—'} → ${v.to??'—'}`;
+    }
+    return `${k}: ${v}`;
+  }).join('<br>');
+}
+async function logAudit(action,targetType,targetId,targetName,details={}){
+  if(!auditAvailable) return;
+  const row={
+    actor_id:cUser?.id||null,
+    actor_name:cProfile?.full_name||cUser?.email||'Unknown',
+    action,
+    target_type:targetType,
+    target_id:targetId||null,
+    target_name:targetName||null,
+    details
+  };
+  const {error}=await sb.from('audit_log').insert(row);
+  if(error){
+    auditAvailable=false;
+    console.warn('Audit log unavailable:',error.message);
+  }
+}
+async function loadAuditLog(){
+  const tb=document.getElementById('autbody');
+  if(!tb) return;
+  tb.innerHTML='<tr><td colspan="5" class="empty">Loading audit log...</td></tr>';
+  const {data,error}=await sb.from('audit_log').select('*').order('created_at',{ascending:false}).limit(50);
+  if(error){
+    auditAvailable=false;
+    tb.innerHTML='<tr><td colspan="5" class="empty">Audit log table is not installed yet. Run the audit_log SQL in Supabase first.</td></tr>';
+    return;
+  }
+  auditAvailable=true;
+  tb.innerHTML=!(data?.length)?'<tr><td colspan="5" class="empty">No audit log entries yet.</td></tr>':data.map(r=>`<tr>
+    <td style="color:var(--mut);font-size:.78rem">${new Date(r.created_at).toLocaleString()}</td>
+    <td><strong>${r.actor_name||'—'}</strong></td>
+    <td><span class="sbadge approved">${r.action||'—'}</span></td>
+    <td>${r.target_name||'—'}<br><span style="color:var(--mut);font-size:.72rem">${r.target_type||''}</span></td>
+    <td style="color:var(--mut);font-size:.78rem">${fmtAuditDetails(r.details)}</td>
+  </tr>`).join('');
+}
+
 async function loadMgr(){
   const{data:workers}=await sb.from('profiles').select('*').eq('role','worker').eq('status','active').order('full_name');
   mgrWorkers=workers||[];
@@ -710,6 +775,7 @@ async function loadMgr(){
       <td style="display:flex;gap:6px">
         <button class="bsm bview" onclick="viewTS('${t.id}')">View</button>
         ${t.status==='submitted'?`<button class="bsm bapp" onclick="appTS('${t.id}')">Approve</button>`:''}
+        ${t.status==='approved'?`<button class="bsm buns" onclick="unlockTS('${t.id}')">Unlock</button>`:''}
       </td></tr>`}).join('');
 
   const wktb=document.getElementById('wktbody');
@@ -733,11 +799,13 @@ async function loadMgr(){
         <button class="bsm bapp" onclick="appU('${u.id}','${(u.full_name||u.username).replace(/'/g,"\'")}')">Approve</button>
         <button class="bsm brej" onclick="rejU('${u.id}','${(u.full_name||u.username).replace(/'/g,"\'")}')">Reject</button>
       </td></tr>`).join('');
+
+  loadAuditLog();
 }
 
 function mTab(t){
-  ['ts','wk','pa'].forEach(p=>{document.getElementById(p+'-panel').classList.toggle('hidden',p!==t)});
-  document.querySelectorAll('.mtab').forEach((el,i)=>el.classList.toggle('active',['ts','wk','pa'][i]===t));
+  ['ts','wk','pa','au'].forEach(p=>{document.getElementById(p+'-panel').classList.toggle('hidden',p!==t)});
+  document.querySelectorAll('.mtab').forEach((el,i)=>el.classList.toggle('active',['ts','wk','pa','au'][i]===t));
 }
 
 
@@ -767,6 +835,7 @@ async function saveWorkerEdit(){
 
   msgBox.innerHTML='<div class="amsg info">Saving...</div>';
 
+  const oldWorker=mgrWorkers.find(x=>x.id===id)||{};
   const {error}=await sb.from('profiles').update({
     full_name:fullName,
     phone:phone||null,
@@ -779,21 +848,50 @@ async function saveWorkerEdit(){
     return;
   }
 
+  const changes={};
+  if((oldWorker.full_name||'')!==fullName) changes.full_name={from:oldWorker.full_name||'',to:fullName};
+  if((oldWorker.phone||'')!==(phone||'')) changes.phone={from:oldWorker.phone||'',to:phone||''};
+  if((oldWorker.company_role||'helper')!==companyRole) changes.company_role={from:oldWorker.company_role||'helper',to:companyRole};
+  if((oldWorker.status||'active')!==status) changes.status={from:oldWorker.status||'active',to:status};
+  await logAudit('worker_updated','worker',id,fullName,changes);
+
   msgBox.innerHTML='<div class="amsg ok">Worker updated.</div>';
   toast('Worker updated ✓','ok');
   closeMo('weditmodal');
   loadMgr();
 }
 
-async function appU(id,name){await sb.from('profiles').update({role:'worker',status:'active'}).eq('id',id);toast(`${name} approved! ✓`,'ok');loadMgr()}
-async function rejU(id,name){if(!confirm(`Reject ${name}'s account?`))return;await sb.from('profiles').update({status:'inactive'}).eq('id',id);toast(`${name} rejected`,'');loadMgr()}
+async function appU(id,name){
+  await sb.from('profiles').update({role:'worker',status:'active'}).eq('id',id);
+  await logAudit('worker_approved','worker',id,name,{status:{from:'pending',to:'active'}});
+  toast(`${name} approved! ✓`,'ok');loadMgr()
+}
+async function rejU(id,name){
+  if(!confirm(`Reject ${name}'s account?`))return;
+  await sb.from('profiles').update({status:'inactive'}).eq('id',id);
+  await logAudit('worker_rejected','worker',id,name,{status:{from:'pending',to:'inactive'}});
+  toast(`${name} rejected`,'');loadMgr()
+}
 async function remW(id,name){
   if(!confirm(`Deactivate ${name}? They will not be able to use the app, but old timesheets stay saved.`))return;
   await sb.from('profiles').update({status:'inactive'}).eq('id',id);
+  await logAudit('worker_deactivated','worker',id,name,{status:{from:'active',to:'inactive'}});
   toast(`${name} deactivated`,'ok');
   loadMgr();
 }
-async function appTS(id){await sb.from('timesheets').update({status:'approved'}).eq('id',id);toast('Approved ✓','ok');loadMgr()}
+async function appTS(id){
+  const {data:ts}=await sb.from('timesheets').select('id,status,week_start,user_id,profiles(full_name)').eq('id',id).single();
+  await sb.from('timesheets').update({status:'approved'}).eq('id',id);
+  await logAudit('timesheet_approved','timesheet',id,ts?.profiles?.full_name||'Worker',{week_start:ts?.week_start,status:{from:ts?.status||'submitted',to:'approved'}});
+  toast('Approved ✓','ok');loadMgr()
+}
+async function unlockTS(id){
+  if(!confirm('Unlock this approved timesheet and return it to submitted status? The worker will still not be able to edit until it is unsubmitted.')) return;
+  const {data:ts}=await sb.from('timesheets').select('id,status,week_start,user_id,profiles(full_name)').eq('id',id).single();
+  await sb.from('timesheets').update({status:'submitted'}).eq('id',id);
+  await logAudit('timesheet_unlocked','timesheet',id,ts?.profiles?.full_name||'Worker',{week_start:ts?.week_start,status:{from:ts?.status||'approved',to:'submitted'}});
+  toast('Timesheet unlocked','ok');loadMgr();
+}
 
 async function viewTS(id){
   const{data:ts}=await sb.from('timesheets').select('*, profiles(full_name)').eq('id',id).single();
@@ -814,7 +912,7 @@ async function viewTS(id){
     <tbody>${rows}</tbody>
     <tfoot><tr><td colspan="3">Total</td><td>${ts.total_hours} hrs</td></tr></tfoot></table>
     ${ts.notes?`<div style="font-size:.82rem;color:var(--mut);margin-top:.5rem"><strong style="color:var(--ink)">Notes:</strong> ${ts.notes}</div>`:''}`;
-  document.getElementById('dacts').innerHTML=ts.status==='submitted'?`<button class="btn bsub" onclick="appTS('${ts.id}');closeMo('dmodal');loadMgr()">✓ Approve</button>`:'';
+  document.getElementById('dacts').innerHTML=ts.status==='submitted'?`<button class="btn bsub" onclick="appTS('${ts.id}');closeMo('dmodal')">✓ Approve</button>`:(ts.status==='approved'?`<button class="btn buns" onclick="unlockTS('${ts.id}');closeMo('dmodal')">Unlock Timesheet</button>`:'');
   openMo('dmodal');
 }
 
