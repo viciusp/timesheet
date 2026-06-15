@@ -196,6 +196,7 @@ tbody tr:hover td{background:var(--sur2)}
     <div class="tright">
       <div class="ubadge"><strong id="tname"></strong></div>
       <span class="rpill" id="trole"></span>
+      <button class="bso" onclick="openProfile()">Profile</button>
       <button class="bso" onclick="doSignout()">Sign Out</button>
     </div>
   </div>
@@ -307,6 +308,24 @@ tbody tr:hover td{background:var(--sur2)}
       <button class="btn buns" onclick="leaveWithoutSaving()">Leave</button>
       <button class="btn bsave" onclick="closeLeaveModal()">Cancel</button>
     </div>
+  </div>
+</div>
+
+<div class="mo" id="pmodal">
+  <div class="mbox" style="max-width:520px">
+    <button class="mclose" onclick="closeMo('pmodal')">✕</button>
+    <div class="mtitle">My Profile</div>
+    <div class="fg"><label>Full Name</label><input type="text" id="pf-name"></div>
+    <div class="fg"><label>Email</label><input type="email" id="pf-email"></div>
+    <div class="fg"><label>Phone</label><input type="tel" id="pf-phone"></div>
+    <div class="fg"><label>Company Role</label><input type="text" id="pf-company-role" readonly></div>
+    <div class="fg"><label>New Password</label><input type="password" id="pf-password" placeholder="Leave blank to keep current password"></div>
+    <div class="macts">
+      <button class="btn bsub" onclick="saveProfile()">Save Profile</button>
+      <button class="btn bsave" onclick="closeMo('pmodal')">Cancel</button>
+    </div>
+    <div id="pf-msg"></div>
+    <p class="hint">Email changes may require confirmation depending on Supabase settings.</p>
   </div>
 </div>
 
@@ -728,6 +747,59 @@ async function exportCSV(){
 }
 
 function openMo(id){document.getElementById(id).classList.add('open')}
+
+function openProfile(){
+  if(!cProfile) return;
+  document.getElementById('pf-name').value=cProfile.full_name||'';
+  document.getElementById('pf-email').value=cProfile.email||cUser?.email||'';
+  document.getElementById('pf-phone').value=cProfile.phone||'';
+  document.getElementById('pf-company-role').value=cProfile.company_role||cProfile.role||'';
+  document.getElementById('pf-password').value='';
+  document.getElementById('pf-msg').innerHTML='';
+  openMo('pmodal');
+}
+
+async function saveProfile(){
+  const fullName=document.getElementById('pf-name').value.trim();
+  const email=document.getElementById('pf-email').value.trim().toLowerCase();
+  const phone=document.getElementById('pf-phone').value.trim();
+  const password=document.getElementById('pf-password').value;
+  const msgBox=document.getElementById('pf-msg');
+
+  if(!fullName) return msgBox.innerHTML='<div class="amsg err">Full name is required.</div>';
+  if(!email) return msgBox.innerHTML='<div class="amsg err">Email is required.</div>';
+  if(password && password.length<6) return msgBox.innerHTML='<div class="amsg err">Password must be at least 6 characters.</div>';
+
+  msgBox.innerHTML='<div class="amsg info">Saving...</div>';
+
+  const authUpdates={data:{full_name:fullName,email,phone}};
+  if(email !== cUser.email) authUpdates.email=email;
+  if(password) authUpdates.password=password;
+
+  const {error:authErr}=await sb.auth.updateUser(authUpdates);
+  if(authErr){
+    msgBox.innerHTML=`<div class="amsg err">${authErr.message}</div>`;
+    return;
+  }
+
+  const {data:prof,error:profErr}=await sb.from('profiles').update({
+    full_name:fullName,
+    email,
+    phone
+  }).eq('id',cUser.id).select('*').single();
+
+  if(profErr){
+    msgBox.innerHTML=`<div class="amsg err">${profErr.message}</div>`;
+    return;
+  }
+
+  cProfile=prof;
+  document.getElementById('tname').textContent=prof.full_name||prof.username;
+  document.getElementById('pf-password').value='';
+  msgBox.innerHTML='<div class="amsg ok">Profile updated.</div>';
+  toast('Profile updated ✓','ok');
+}
+
 function closeMo(id){document.getElementById(id).classList.remove('open')}
 document.querySelectorAll('.mo').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open')}));
 
@@ -799,7 +871,7 @@ function applyDayEntries(d, ents){
 boot();
 
 // Mark dirty on any edits
-document.addEventListener('input',(e)=>{ if(e.target.matches('input, textarea, select')) markDirty(); });
+document.addEventListener('input',(e)=>{ if(e.target.closest('#pmodal')) return; if(e.target.matches('input, textarea, select')) markDirty(); });
 
 // Browser warning (refresh/close/back)
 window.addEventListener('beforeunload',(e)=>{ if(!isDirty) return; e.preventDefault(); e.returnValue=''; });
