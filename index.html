@@ -112,6 +112,7 @@ tbody tr:hover td{background:var(--sur2)}
 .sbadge.submitted{background:rgba(59,130,246,.12);color:var(--blu)}
 .sbadge.approved{background:rgba(16,185,129,.12);color:var(--grn)}
 .sbadge.draft{background:var(--sur2);color:var(--mut)}
+.sbadge.rejected{background:rgba(239,68,68,.12);color:var(--red)}
 .bsm{font-family:'Barlow',sans-serif;font-weight:600;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;padding:4px 10px;border-radius:4px;border:none;cursor:pointer;transition:all .15s}
 .bapp{background:rgba(16,185,129,.12);color:var(--grn)}.bapp:hover{background:var(--grn);color:#000}
 .brej{background:rgba(239,68,68,.12);color:var(--red)}.brej:hover{background:var(--red);color:#fff}
@@ -151,6 +152,22 @@ tbody tr:hover td{background:var(--sur2)}
 .teammate-row:hover{border-color:var(--acc);background:var(--sur2)}
 .teammate-name{font-weight:600;font-size:.9rem}
 .teammate-hrs{font-size:.75rem;color:var(--mut)}
+
+
+/* Vacation Requests */
+.vgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:1rem}
+.vreq-card{background:var(--sur);border:1px solid var(--bdr);border-radius:8px;padding:1rem;margin-top:1.25rem}
+.vreq-row{display:grid;grid-template-columns:1fr 1fr 1fr 1.4fr auto;gap:8px;align-items:end}
+.vtype{background:var(--sur2);border:1px solid var(--bdr);border-radius:6px;color:var(--ink);font-family:'Barlow',sans-serif;padding:.65rem .75rem}
+.vcal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.vday{background:var(--bg);border:1px solid var(--bdr);border-radius:6px;min-height:96px;padding:8px;font-size:.78rem}
+.vday.today{border-color:var(--acc)}
+.vdate{font-weight:700;color:var(--mut);margin-bottom:5px}
+.vitem{background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.2);color:var(--blu);border-radius:4px;padding:3px 5px;margin-top:4px;font-size:.72rem;line-height:1.15}
+.vitem.approved{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.22);color:var(--grn)}
+.vitem.pending{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.22);color:var(--acc)}
+.vitem.rejected{background:rgba(239,68,68,.12);border-color:rgba(239,68,68,.22);color:var(--red)}
+@media(max-width:760px){.vgrid,.vreq-row{grid-template-columns:1fr}.vcal{grid-template-columns:1fr}.vday{min-height:auto}}
 
 #toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:var(--sur2);border:1px solid var(--bdr);color:var(--ink);padding:.7rem 1.4rem;border-radius:8px;font-size:.85rem;font-weight:600;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1}#toast.ok{border-color:var(--grn);color:var(--grn)}#toast.er{border-color:var(--red);color:var(--red)}
@@ -230,6 +247,27 @@ tbody tr:hover td{background:var(--sur2)}
       </div>
       <div class="abar" id="wabar"></div>
       <p class="hint">Hours auto-save. Submit when your week is complete for manager review.</p>
+      <div class="vreq-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+          <div>
+            <div class="stitle" style="margin:0">Vacation Request</div>
+            <div style="color:var(--mut);font-size:.82rem;margin-top:4px">Request vacation or time off. Manager must approve it.</div>
+          </div>
+          <button class="btn bsave" onclick="loadMyVacations()">Refresh</button>
+        </div>
+        <div class="vreq-row">
+          <div class="fg" style="margin:0"><label>Start Date</label><input type="date" id="v-start"></div>
+          <div class="fg" style="margin:0"><label>End Date</label><input type="date" id="v-end"></div>
+          <div class="fg" style="margin:0"><label>Type</label><select id="v-type" class="vtype"><option value="vacation">Vacation</option><option value="pto">PTO</option><option value="unpaid">Unpaid</option><option value="sick">Sick</option><option value="other">Other</option></select></div>
+          <div class="fg" style="margin:0"><label>Reason / Notes</label><input type="text" id="v-notes" placeholder="Optional"></div>
+          <button class="btn bsub" onclick="submitVacationRequest()">Submit</button>
+        </div>
+        <div id="v-msg"></div>
+        <div style="margin-top:1.25rem">
+          <div class="stitle" style="font-size:1rem;margin-bottom:.75rem">My Vacation Requests</div>
+          <div class="twrap"><table><thead><tr><th>Dates</th><th>Type</th><th>Status</th><th>Manager Note</th><th>Action</th></tr></thead><tbody id="my-vtbody"></tbody></table></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -242,6 +280,8 @@ tbody tr:hover td{background:var(--sur2)}
         <button class="mtab" onclick="mTab('pa')">Pending Approval</button>
         <button class="mtab" onclick="mTab('au')">Audit Log</button>
         <button class="mtab" onclick="mTab('pr')">Payroll</button>
+        <button class="mtab" onclick="mTab('vr')">Vacation Requests</button>
+        <button class="mtab" onclick="mTab('vc')">Vacation Calendar</button>
       </div>
       <div id="ts-panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
@@ -284,6 +324,27 @@ tbody tr:hover td{background:var(--sur2)}
         </div>
         <div class="twrap"><table><thead><tr><th>Employee</th><th>Role</th><th>Regular</th><th>OT</th><th>Total</th><th>Status</th></tr></thead><tbody id="prtbody"></tbody></table></div>
         <p class="hint">Overtime is calculated after 40 total hours per week. CSV includes week start and week end as the report title.</p>
+      </div>
+      <div id="vr-panel" class="hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <div class="stitle" style="margin:0">Vacation Requests</div>
+          <button class="btn bsave" onclick="loadManagerVacations()">Refresh</button>
+        </div>
+        <div class="twrap"><table><thead><tr><th>Worker</th><th>Dates</th><th>Type</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="mgr-vtbody"></tbody></table></div>
+      </div>
+      <div id="vc-panel" class="hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+          <div>
+            <div class="stitle" style="margin:0">Manager Vacation Calendar</div>
+            <div id="vc-label" style="color:var(--mut);font-size:.82rem;margin-top:4px"></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn bsave" onclick="navVacationMonth(-1)">← Prev Month</button>
+            <button class="btn bsave" onclick="navVacationMonth(1)">Next Month →</button>
+          </div>
+        </div>
+        <div class="vcal" id="vac-cal"></div>
+        <p class="hint" style="margin-top:.75rem">Calendar shows approved and pending vacation requests.</p>
       </div>
     </div>
   </div>
@@ -392,6 +453,21 @@ tbody tr:hover td{background:var(--sur2)}
   </div>
 </div>
 
+<div class="mo" id="vactionmodal">
+  <div class="mbox" style="max-width:520px">
+    <button class="mclose" onclick="closeMo('vactionmodal')">✕</button>
+    <div class="mtitle" id="va-title">Vacation Request</div>
+    <input type="hidden" id="va-id">
+    <input type="hidden" id="va-action">
+    <div id="va-summary" style="color:var(--mut);font-size:.9rem;margin-bottom:1rem"></div>
+    <div class="fg"><label>Manager Note</label><textarea class="narea" id="va-note" placeholder="Optional note to worker"></textarea></div>
+    <div class="macts">
+      <button class="btn bsub" onclick="saveVacationDecision()">Save Decision</button>
+      <button class="btn bsave" onclick="closeMo('vactionmodal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -406,6 +482,8 @@ let mgrWorkers=[];
 let mPayrollWeek=wkStart(new Date());
 let payrollRows=[];
 let auditAvailable=true;
+let vacationMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1);
+let managerVacationRows=[];
 
 // --- Unsaved-changes protection (custom modal for in-app nav + browser warning for refresh/close) ---
 let isDirty=false;
@@ -566,6 +644,7 @@ async function loadWeek(){
   cEntries=entries;
   document.getElementById('wnotes').value=ts?.notes||'';
   renderDays();updateTotals();renderActs();updateWSBadge();
+  loadMyVacations();
 }
 
 function renderDays(){
@@ -825,13 +904,17 @@ async function loadMgr(){
 
   loadAuditLog();
   loadPayroll();
+  loadManagerVacations();
+  loadVacationCalendar();
 }
 
 function mTab(t){
-  const tabs=['ts','wk','pa','au','pr'];
-  tabs.forEach(p=>{document.getElementById(p+'-panel').classList.toggle('hidden',p!==t)});
+  const tabs=['ts','wk','pa','au','pr','vr','vc'];
+  tabs.forEach(p=>{document.getElementById(p+'-panel')?.classList.toggle('hidden',p!==t)});
   document.querySelectorAll('.mtab').forEach((el,i)=>el.classList.toggle('active',tabs[i]===t));
   if(t==='pr') loadPayroll();
+  if(t==='vr') loadManagerVacations();
+  if(t==='vc') loadVacationCalendar();
 }
 
 
@@ -1015,6 +1098,130 @@ async function exportPayrollCSV(){
   toast('Payroll CSV downloaded ✓','ok');
 }
 
+
+function escHtml(v){return String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function vacationDays(start,end){
+  const a=new Date(start+'T00:00:00'), b=new Date(end+'T00:00:00');
+  if(isNaN(a)||isNaN(b)||b<a) return 0;
+  return Math.round((b-a)/86400000)+1;
+}
+function fmtVacRange(r){return `${fmtD(r.start_date)} — ${fmtD(r.end_date)} (${vacationDays(r.start_date,r.end_date)} day${vacationDays(r.start_date,r.end_date)===1?'':'s'})`}
+
+async function submitVacationRequest(){
+  const start=document.getElementById('v-start').value;
+  const end=document.getElementById('v-end').value;
+  const type=document.getElementById('v-type').value;
+  const notes=document.getElementById('v-notes').value.trim();
+  if(!start||!end) return msg('v-msg','Start date and end date are required.','err');
+  if(new Date(end+'T00:00:00')<new Date(start+'T00:00:00')) return msg('v-msg','End date cannot be before start date.','err');
+  msg('v-msg','Submitting vacation request...','info');
+  const {data,error}=await sb.from('vacation_requests').insert({user_id:cUser.id,start_date:start,end_date:end,request_type:type,notes,status:'pending'}).select('*').single();
+  if(error) return msg('v-msg',`${error.message}. Run the vacation_requests SQL in Supabase first if the table is missing.`,'err');
+  await logAudit('vacation_requested','vacation_request',data.id,cProfile?.full_name||'Worker',{dates:`${start} to ${end}`,type});
+  document.getElementById('v-start').value='';
+  document.getElementById('v-end').value='';
+  document.getElementById('v-notes').value='';
+  msg('v-msg','Vacation request submitted.','ok');
+  toast('Vacation request submitted ✓','ok');
+  loadMyVacations();
+}
+
+async function loadMyVacations(){
+  const tb=document.getElementById('my-vtbody');
+  if(!tb||!cUser) return;
+  tb.innerHTML='<tr><td colspan="5" class="empty">Loading vacation requests...</td></tr>';
+  const {data,error}=await sb.from('vacation_requests').select('*').eq('user_id',cUser.id).order('start_date',{ascending:false});
+  if(error){tb.innerHTML=`<tr><td colspan="5" class="empty">${error.message}. Run vacation_requests SQL first.</td></tr>`;return;}
+  tb.innerHTML=!(data?.length)?'<tr><td colspan="5" class="empty">No vacation requests yet.</td></tr>':data.map(r=>`<tr>
+    <td>${fmtVacRange(r)}</td>
+    <td style="text-transform:capitalize;color:var(--mut)">${escHtml(r.request_type||'vacation')}</td>
+    <td><span class="sbadge ${r.status}">${r.status}</span></td>
+    <td style="color:var(--mut);font-size:.82rem">${escHtml(r.manager_note||'')}</td>
+    <td>${r.status==='pending'?`<button class="bsm brej" onclick="cancelVacationRequest('${r.id}')">Cancel</button>`:'—'}</td>
+  </tr>`).join('');
+}
+
+async function cancelVacationRequest(id){
+  if(!confirm('Cancel this pending vacation request?')) return;
+  const {data:req}=await sb.from('vacation_requests').select('*').eq('id',id).single();
+  const {error}=await sb.from('vacation_requests').delete().eq('id',id).eq('user_id',cUser.id).eq('status','pending');
+  if(error) return toast(error.message,'er');
+  await logAudit('vacation_cancelled','vacation_request',id,cProfile?.full_name||'Worker',{dates:req?`${req.start_date} to ${req.end_date}`:''});
+  toast('Vacation request cancelled','ok');
+  loadMyVacations();
+}
+
+async function loadManagerVacations(){
+  const tb=document.getElementById('mgr-vtbody');
+  if(!tb) return;
+  tb.innerHTML='<tr><td colspan="6" class="empty">Loading vacation requests...</td></tr>';
+  const {data,error}=await sb.from('vacation_requests').select('*, profiles(full_name,company_role,email)').order('created_at',{ascending:false});
+  if(error){tb.innerHTML=`<tr><td colspan="6" class="empty">${error.message}. Run vacation_requests SQL first.</td></tr>`;managerVacationRows=[];return;}
+  managerVacationRows=data||[];
+  tb.innerHTML=!managerVacationRows.length?'<tr><td colspan="6" class="empty">No vacation requests yet.</td></tr>':managerVacationRows.map(r=>`<tr>
+    <td><strong>${escHtml(r.profiles?.full_name||'—')}</strong><br><span style="color:var(--mut);font-size:.75rem;text-transform:capitalize">${escHtml(r.profiles?.company_role||'')}</span></td>
+    <td>${fmtVacRange(r)}</td>
+    <td style="text-transform:capitalize;color:var(--mut)">${escHtml(r.request_type||'vacation')}</td>
+    <td><span class="sbadge ${r.status}">${r.status}</span></td>
+    <td style="color:var(--mut);font-size:.82rem">${escHtml(r.notes||'')}${r.manager_note?`<br><strong style="color:var(--ink)">Manager:</strong> ${escHtml(r.manager_note)}`:''}</td>
+    <td style="display:flex;gap:6px;flex-wrap:wrap">
+      ${r.status==='pending'?`<button class="bsm bapp" onclick="openVacationDecision('${r.id}','approved')">Approve</button><button class="bsm brej" onclick="openVacationDecision('${r.id}','rejected')">Reject</button>`:'—'}
+    </td>
+  </tr>`).join('');
+}
+
+function openVacationDecision(id,action){
+  const r=managerVacationRows.find(x=>x.id===id);
+  if(!r) return toast('Vacation request not found','er');
+  document.getElementById('va-id').value=id;
+  document.getElementById('va-action').value=action;
+  document.getElementById('va-note').value='';
+  document.getElementById('va-title').textContent=action==='approved'?'Approve Vacation':'Reject Vacation';
+  document.getElementById('va-summary').innerHTML=`<strong style="color:var(--ink)">${escHtml(r.profiles?.full_name||'Worker')}</strong><br>${fmtVacRange(r)}<br><span style="text-transform:capitalize">${escHtml(r.request_type||'vacation')}</span>${r.notes?`<br>Note: ${escHtml(r.notes)}`:''}`;
+  openMo('vactionmodal');
+}
+
+async function saveVacationDecision(){
+  const id=document.getElementById('va-id').value;
+  const action=document.getElementById('va-action').value;
+  const note=document.getElementById('va-note').value.trim();
+  const r=managerVacationRows.find(x=>x.id===id);
+  const {error}=await sb.from('vacation_requests').update({status:action,manager_note:note||null,decided_by:cUser.id,decided_at:new Date().toISOString()}).eq('id',id);
+  if(error) return toast(error.message,'er');
+  await logAudit(action==='approved'?'vacation_approved':'vacation_rejected','vacation_request',id,r?.profiles?.full_name||'Worker',{dates:r?`${r.start_date} to ${r.end_date}`:'',status:{from:r?.status||'pending',to:action},manager_note:note});
+  closeMo('vactionmodal');
+  toast(action==='approved'?'Vacation approved ✓':'Vacation rejected','ok');
+  loadManagerVacations();
+  loadVacationCalendar();
+}
+
+function navVacationMonth(delta){
+  vacationMonth=new Date(vacationMonth.getFullYear(),vacationMonth.getMonth()+delta,1);
+  loadVacationCalendar();
+}
+async function loadVacationCalendar(){
+  const cal=document.getElementById('vac-cal');
+  if(!cal) return;
+  const y=vacationMonth.getFullYear(), m=vacationMonth.getMonth();
+  const first=new Date(y,m,1), last=new Date(y,m+1,0);
+  const startIso=isoD(first), endIso=isoD(last);
+  document.getElementById('vc-label').textContent=first.toLocaleString(undefined,{month:'long',year:'numeric'});
+  cal.innerHTML='<div class="empty" style="grid-column:1/-1">Loading calendar...</div>';
+  const {data,error}=await sb.from('vacation_requests')
+    .select('*, profiles(full_name,company_role)')
+    .lte('start_date',endIso).gte('end_date',startIso)
+    .in('status',['pending','approved'])
+    .order('start_date',{ascending:true});
+  if(error){cal.innerHTML=`<div class="empty" style="grid-column:1/-1">${error.message}. Run vacation_requests SQL first.</div>`;return;}
+  const today=isoD(new Date());
+  let cells=[];
+  for(let d=1;d<=last.getDate();d++){
+    const dayIso=isoD(new Date(y,m,d));
+    const items=(data||[]).filter(r=>r.start_date<=dayIso && r.end_date>=dayIso);
+    cells.push(`<div class="vday ${dayIso===today?'today':''}"><div class="vdate">${d}</div>${items.map(r=>`<div class="vitem ${r.status}"><strong>${escHtml(r.profiles?.full_name||'Worker')}</strong><br>${escHtml(r.request_type||'vacation')} · ${r.status}</div>`).join('')}</div>`);
+  }
+  cal.innerHTML=cells.join('');
+}
 
 async function exportCSV(){
   const{data}=await sb.from('timesheets').select('*, profiles(full_name), timesheet_entries(*)');
