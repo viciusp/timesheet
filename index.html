@@ -241,6 +241,7 @@ tbody tr:hover td{background:var(--sur2)}
         <button class="mtab" onclick="mTab('wk')">Workers</button>
         <button class="mtab" onclick="mTab('pa')">Pending Approval</button>
         <button class="mtab" onclick="mTab('au')">Audit Log</button>
+        <button class="mtab" onclick="mTab('pr')">Payroll</button>
       </div>
       <div id="ts-panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
@@ -263,6 +264,26 @@ tbody tr:hover td{background:var(--sur2)}
           <button class="btn bsave" onclick="loadAuditLog()">Refresh</button>
         </div>
         <div class="twrap"><table><thead><tr><th>When</th><th>Manager</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody id="autbody"></tbody></table></div>
+      </div>
+      <div id="pr-panel" class="hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+          <div>
+            <div class="stitle" style="margin:0">Payroll Export</div>
+            <div id="pr-week-label" style="color:var(--mut);font-size:.82rem;margin-top:4px"></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn bsave" onclick="navPayrollWeek(-7)">← Prev Week</button>
+            <button class="btn bsave" onclick="navPayrollWeek(7)">Next Week →</button>
+            <button class="btn bpdf" onclick="exportPayrollCSV()">⬇ Export Payroll CSV</button>
+          </div>
+        </div>
+        <div class="tbar">
+          <div class="tcard acc"><div class="tl">Total Hours</div><div class="tv" id="pr-total">0</div></div>
+          <div class="tcard grn"><div class="tl">Regular Hours</div><div class="tv" id="pr-regular">0</div></div>
+          <div class="tcard red"><div class="tl">Overtime Hours</div><div class="tv" id="pr-ot">0</div></div>
+        </div>
+        <div class="twrap"><table><thead><tr><th>Employee</th><th>Role</th><th>Regular</th><th>OT</th><th>Total</th><th>Status</th></tr></thead><tbody id="prtbody"></tbody></table></div>
+        <p class="hint">Overtime is calculated after 40 total hours per week. CSV includes week start and week end as the report title.</p>
       </div>
     </div>
   </div>
@@ -382,6 +403,8 @@ const DAYS=['Thursday','Friday','Saturday','Sunday','Monday','Tuesday','Wednesda
 
 let cUser=null,cProfile=null,cWeek=wkStart(new Date()),cTS=null,cEntries=[],saving=false;
 let mgrWorkers=[];
+let mPayrollWeek=wkStart(new Date());
+let payrollRows=[];
 let auditAvailable=true;
 
 // --- Unsaved-changes protection (custom modal for in-app nav + browser warning for refresh/close) ---
@@ -801,11 +824,14 @@ async function loadMgr(){
       </td></tr>`).join('');
 
   loadAuditLog();
+  loadPayroll();
 }
 
 function mTab(t){
-  ['ts','wk','pa','au'].forEach(p=>{document.getElementById(p+'-panel').classList.toggle('hidden',p!==t)});
-  document.querySelectorAll('.mtab').forEach((el,i)=>el.classList.toggle('active',['ts','wk','pa','au'][i]===t));
+  const tabs=['ts','wk','pa','au','pr'];
+  tabs.forEach(p=>{document.getElementById(p+'-panel').classList.toggle('hidden',p!==t)});
+  document.querySelectorAll('.mtab').forEach((el,i)=>el.classList.toggle('active',tabs[i]===t));
+  if(t==='pr') loadPayroll();
 }
 
 
@@ -914,6 +940,84 @@ async function viewTS(id){
     ${ts.notes?`<div style="font-size:.82rem;color:var(--mut);margin-top:.5rem"><strong style="color:var(--ink)">Notes:</strong> ${ts.notes}</div>`:''}`;
   document.getElementById('dacts').innerHTML=ts.status==='submitted'?`<button class="btn bsub" onclick="appTS('${ts.id}');closeMo('dmodal')">✓ Approve</button>`:(ts.status==='approved'?`<button class="btn buns" onclick="unlockTS('${ts.id}');closeMo('dmodal')">Unlock Timesheet</button>`:'');
   openMo('dmodal');
+}
+
+
+function fmtMoneyHours(n){
+  const v=Math.round((parseFloat(n)||0)*100)/100;
+  return Number.isInteger(v)?String(v):v.toFixed(2);
+}
+function payrollWeekEnd(){const e=new Date(mPayrollWeek);e.setDate(e.getDate()+6);return e}
+function payrollTitle(){return `${isoD(mPayrollWeek)} to ${isoD(payrollWeekEnd())}`}
+function navPayrollWeek(days){
+  mPayrollWeek.setDate(mPayrollWeek.getDate()+days);
+  mPayrollWeek=wkStart(mPayrollWeek);
+  loadPayroll();
+}
+async function loadPayroll(){
+  const tb=document.getElementById('prtbody');
+  if(!tb) return;
+  document.getElementById('pr-week-label').textContent=`Week: ${payrollTitle()}`;
+  tb.innerHTML='<tr><td colspan="6" class="empty">Loading payroll...</td></tr>';
+  const {data,error}=await sb.from('timesheets')
+    .select('id,week_start,week_end,total_hours,status,profiles(full_name,company_role)')
+    .eq('week_start',isoD(mPayrollWeek))
+    .order('created_at',{ascending:false});
+  if(error){
+    tb.innerHTML=`<tr><td colspan="6" class="empty">${error.message}</td></tr>`;
+    payrollRows=[];
+    return;
+  }
+  payrollRows=(data||[]).map(ts=>{
+    const total=parseFloat(ts.total_hours)||0;
+    const regular=Math.min(40,total);
+    const overtime=Math.max(0,total-40);
+    return {
+      employee:ts.profiles?.full_name||'—',
+      role:ts.profiles?.company_role||'helper',
+      regular,overtime,total,
+      status:ts.status||'draft'
+    };
+  }).sort((a,b)=>a.employee.localeCompare(b.employee));
+  const total=payrollRows.reduce((s,r)=>s+r.total,0);
+  const regular=payrollRows.reduce((s,r)=>s+r.regular,0);
+  const overtime=payrollRows.reduce((s,r)=>s+r.overtime,0);
+  document.getElementById('pr-total').textContent=fmtMoneyHours(total);
+  document.getElementById('pr-regular').textContent=fmtMoneyHours(regular);
+  document.getElementById('pr-ot').textContent=fmtMoneyHours(overtime);
+  tb.innerHTML=!payrollRows.length?'<tr><td colspan="6" class="empty">No timesheets found for this week.</td></tr>':payrollRows.map(r=>`<tr>
+    <td><strong>${r.employee}</strong></td>
+    <td style="color:var(--mut);text-transform:capitalize">${r.role}</td>
+    <td>${fmtMoneyHours(r.regular)}</td>
+    <td style="color:${r.overtime>0?'var(--red)':'var(--mut)'}">${r.overtime>0?fmtMoneyHours(r.overtime):'—'}</td>
+    <td><strong>${fmtMoneyHours(r.total)}</strong></td>
+    <td><span class="sbadge ${r.status}">${r.status}</span></td>
+  </tr>`).join('');
+}
+function csvSafe(v){return `"${String(v??'').replace(/"/g,'""')}"`}
+async function exportPayrollCSV(){
+  if(!payrollRows.length) await loadPayroll();
+  if(!payrollRows.length) return toast('No payroll data for this week','er');
+  let csv=`Payroll Export - Week ${payrollTitle()}
+`;
+  csv+='Employee,Role,Regular Hours,Overtime Hours,Total Hours,Status
+';
+  payrollRows.forEach(r=>{
+    csv += [r.employee,r.role,fmtMoneyHours(r.regular),fmtMoneyHours(r.overtime),fmtMoneyHours(r.total),r.status].map(csvSafe).join(',')+'
+';
+  });
+  const total=payrollRows.reduce((s,r)=>s+r.total,0);
+  const regular=payrollRows.reduce((s,r)=>s+r.regular,0);
+  const overtime=payrollRows.reduce((s,r)=>s+r.overtime,0);
+  csv += `
+Totals,,${fmtMoneyHours(regular)},${fmtMoneyHours(overtime)},${fmtMoneyHours(total)},
+`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download=`payroll_${isoD(mPayrollWeek)}_to_${isoD(payrollWeekEnd())}.csv`;
+  a.click();
+  await logAudit('payroll_exported','payroll',isoD(mPayrollWeek),`Payroll ${payrollTitle()}`,{week_start:isoD(mPayrollWeek),week_end:isoD(payrollWeekEnd()),workers:payrollRows.length,total_hours:fmtMoneyHours(total),regular_hours:fmtMoneyHours(regular),overtime_hours:fmtMoneyHours(overtime)});
+  toast('Payroll CSV downloaded ✓','ok');
 }
 
 async function exportCSV(){
