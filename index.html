@@ -531,7 +531,9 @@ function mgrWeekStart(d=new Date()){
 function mgrWeekPhase(d=new Date()){
   const dt=new Date(d),day=dt.getDay(),hr=dt.getHours()+dt.getMinutes()/60;
   if(day===3&&hr>=17) return {key:'due',label:'Due Now'};
-  if(day===4||day===5||day===6||day===0||day===1) return {key:'review',label:'Payroll Review'};
+  if(day===4||day===5) return {key:'review',label:'Payroll Review'};
+  if(day===6||day===0) return {key:'soft',label:'Weekend Review'};
+  if(day===1) return {key:'payroll',label:'Payroll Day'};
   return {key:'early',label:'Not Due Yet'};
 }
 function fmtD(d){const dt=new Date(d);return`${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear()}`}
@@ -906,12 +908,12 @@ async function loadMgr(){
   const pendingVacs=(pendingVac||[]).length;
   const pendingTotal=pendingUsers+pendingVacs;
 
-  const missingActive=phase.key==='due'||phase.key==='review';
+  const missingActive=phase.key==='due'||phase.key==='review'||phase.key==='payroll';
   const reviewColor=needReview.length?'b':'g';
-  const missingColor=missingActive&&missingWorkers.length?'r':(submittedCount===activeCount&&activeCount?'g':'y');
+  const missingColor=missingActive&&missingWorkers.length?'r':(submittedCount===activeCount&&activeCount?'g':'b');
   const outColor=(outToday||[]).length?'y':'g';
   const pendingColor=pendingTotal?'y':'g';
-  const missingMain=missingActive?`${submittedCount} / ${activeCount}`:(phase.key==='early'?'—':`${submittedCount} / ${activeCount}`);
+  const missingMain=`${submittedCount} / ${activeCount}`;
   const missingSub=missingActive
     ? (missingWorkers.length?`${missingWorkers.length} Missing • ${shortNames(missingWorkers,'')}`:'All submitted')
     : phase.label;
@@ -919,7 +921,7 @@ async function loadMgr(){
 
   document.getElementById('mstats').innerHTML=`
     <div class="scard ${reviewColor} clickable" onclick="mTab('ts')"><div class="sl">Awaiting Review</div><div class="sv">${needReview.length}</div><div class="ss">${shortNames(needReview,'Nothing to approve')}</div></div>
-    <div class="scard ${missingColor} clickable" onclick="mTab('ts')"><div class="sl">Missing Timesheets</div><div class="sv">${missingMain}</div><div class="ss">${missingSub}</div></div>
+    <div class="scard ${missingColor} clickable" onclick="mTab('ts')"><div class="sl">Timesheets</div><div class="sv">${missingMain}</div><div class="ss">${missingSub}</div></div>
     <div class="scard ${outColor} clickable" onclick="mTab('vc')"><div class="sl">Out Today</div><div class="sv">${(outToday||[]).length}</div><div class="ss">${shortNames(outToday,'Nobody out')}</div></div>
     <div class="scard ${pendingColor} clickable" onclick="mTab('${pendingClick}')"><div class="sl">Pending Actions</div><div class="sv">${pendingTotal}</div><div class="ss">${pendingTotal?`${pendingUsers} user${pendingUsers===1?'':'s'} • ${pendingVacs} vacation${pendingVacs===1?'':'s'}`:'Nothing pending'}</div></div>`;
 
