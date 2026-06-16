@@ -107,6 +107,10 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow',sans-serif;min-h
 .tsum-card .tv{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.55rem;line-height:1}
 .tsum-card.g .tv{color:var(--grn)}.tsum-card.y .tv{color:var(--acc)}.tsum-card.b .tv{color:var(--blu)}.tsum-card.r .tv{color:var(--red)}
 .tweekline{font-size:.82rem;color:var(--mut);margin-top:4px}
+.weeknav{display:flex;align-items:center;gap:8px;margin-top:.5rem;flex-wrap:wrap}
+.weeknav .wnbtn{background:var(--sur2);border:1px solid var(--bdr);color:var(--ink);font-family:'Barlow',sans-serif;font-weight:700;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;padding:.45rem .75rem;border-radius:6px;cursor:pointer}
+.weeknav .wnbtn:hover{border-color:var(--acc);color:var(--acc)}
+.weeknav .wnbtn:disabled{opacity:.35;cursor:not-allowed}
 .mtabs{display:flex;gap:4px;margin-bottom:1.25rem;background:var(--sur);padding:4px;border-radius:8px;width:fit-content}
 .mtab{padding:.45rem 1rem;font-family:'Barlow',sans-serif;font-weight:600;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;border:none;cursor:pointer;border-radius:6px;background:none;color:var(--mut);transition:all .15s}
 .mtab.active{background:var(--sur2);color:var(--ink)}
@@ -294,8 +298,13 @@ tbody tr:hover td{background:var(--sur2)}
       <div id="ts-panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
           <div>
-            <div class="stitle" style="margin:0">This Week's Timesheets</div>
+            <div class="stitle" style="margin:0">Timesheets by Week</div>
             <div id="ts-week-label" class="tweekline"></div>
+            <div class="weeknav">
+              <button class="wnbtn" onclick="shiftTsWeek(-1)">← Previous Week</button>
+              <button class="wnbtn" onclick="resetTsWeek()">Current Payroll Week</button>
+              <button class="wnbtn" id="ts-next-week" onclick="shiftTsWeek(1)">Next Week →</button>
+            </div>
           </div>
           <button class="btn bpdf" onclick="exportCSV()">⬇ Export CSV</button>
         </div>
@@ -491,6 +500,7 @@ const DAYS=['Thursday','Friday','Saturday','Sunday','Monday','Tuesday','Wednesda
 
 let cUser=null,cProfile=null,cWeek=wkStart(new Date()),cTS=null,cEntries=[],saving=false;
 let mgrWorkers=[];
+let mTimesheetWeek=null;
 let mPayrollWeek=wkStart(new Date());
 let payrollRows=[];
 let auditAvailable=true;
@@ -537,6 +547,21 @@ function mgrWeekStart(d=new Date()){
   const dt=new Date(d),day=dt.getDay();
   if(day===0||day===1||day===4||day===5||day===6) dt.setDate(dt.getDate()-7);
   return wkStart(dt);
+}
+
+function mgrSelectedWeekStart(){
+  if(!mTimesheetWeek) mTimesheetWeek=mgrWeekStart(new Date());
+  return new Date(mTimesheetWeek);
+}
+function shiftTsWeek(dir){
+  const base=mgrSelectedWeekStart();
+  base.setDate(base.getDate()+(dir*7));
+  mTimesheetWeek=base;
+  loadMgr();
+}
+function resetTsWeek(){
+  mTimesheetWeek=mgrWeekStart(new Date());
+  loadMgr();
 }
 function mgrWeekPhase(d=new Date()){
   const dt=new Date(d),day=dt.getDay(),hr=dt.getHours()+dt.getMinutes()/60;
@@ -884,7 +909,7 @@ async function loadMgr(){
   mgrWorkers=workers||[];
   const{data:pending}=await sb.from('profiles').select('*').eq('status','pending');
 
-  const reviewWeek=mgrWeekStart(new Date());
+  const reviewWeek=mgrSelectedWeekStart();
   const weekIso=isoD(reviewWeek);
   const weekEnd=new Date(reviewWeek);weekEnd.setDate(weekEnd.getDate()+6);
   const phase=mgrWeekPhase(new Date());
@@ -929,7 +954,11 @@ async function loadMgr(){
     <div class="scard ${pendingColor} clickable" onclick="mTab('${pendingClick}')"><div class="sl">Pending Actions</div><div class="sv">${pendingTotal}</div><div class="ss">${pendingTotal?`${pendingUsers} user${pendingUsers===1?'':'s'} • ${pendingVacs} vacation${pendingVacs===1?'':'s'}`:'Nothing pending'}</div></div>`;
 
   const tsWeekLabel=document.getElementById('ts-week-label');
-  if(tsWeekLabel) tsWeekLabel.textContent=`Week ${fmtD(reviewWeek)} — ${fmtD(weekEnd)}`;
+  const currentWeek=mgrWeekStart(new Date());
+  const isCurrent=isoD(reviewWeek)===isoD(currentWeek);
+  if(tsWeekLabel) tsWeekLabel.textContent=`Week ${fmtD(reviewWeek)} — ${fmtD(weekEnd)}${isCurrent?' · Current payroll week':''}`;
+  const nextBtn=document.getElementById('ts-next-week');
+  if(nextBtn) nextBtn.disabled=isCurrent;
   const tsSummary=document.getElementById('ts-summary');
   if(tsSummary) tsSummary.innerHTML=`
     <div class="tsum-card b"><div class="tl">Submitted</div><div class="tv">${submittedCount} / ${activeCount}</div></div>
@@ -1296,14 +1325,15 @@ async function loadVacationCalendar(){
 }
 
 async function exportCSV(){
-  const{data}=await sb.from('timesheets').select('*, profiles(full_name), timesheet_entries(*)');
-  if(!data?.length)return toast('No data','er');
+  const exportWeek=isoD(mgrSelectedWeekStart());
+  const{data}=await sb.from('timesheets').select('*, profiles(full_name), timesheet_entries(*)').eq('week_start',exportWeek);
+  if(!data?.length)return toast('No data for selected week','er');
   let csv='Worker,Week Start,Week End,Day,Job Code,Description,Hours,Total Hours,Status\n';
   data.forEach(ts=>{
     if(ts.timesheet_entries?.length)ts.timesheet_entries.forEach(e=>{csv+=[ts.profiles?.full_name,ts.week_start,ts.week_end,DAYS[e.day_index],e.job_code||'',e.description||'',e.hours,ts.total_hours,ts.status].map(csvSafe).join(',')+'\n'});
     else csv+=[ts.profiles?.full_name,ts.week_start,ts.week_end,'','','','0',ts.total_hours,ts.status].map(csvSafe).join(',')+'\n';
   });
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`timesheets_${new Date().toISOString().split('T')[0]}.csv`;a.click();
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`timesheets_${exportWeek}.csv`;a.click();
   toast('CSV downloaded ✓','ok');
 }
 
