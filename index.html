@@ -883,14 +883,14 @@ async function loadMgr(){
   const pendingUsers=(pending||[]).length;
   const pendingVacs=(pendingVac||[]).length;
   const pendingTotal=pendingUsers+pendingVacs;
-  const submittedColor=submitted.length===(workers?.length||0)&&workers?.length?'g':'b';
+  const reviewColor=needReview.length?'b':'g';
   const missingColor=missingWorkers.length?'r':'g';
   const outColor=(outToday||[]).length?'y':'g';
   const pendingColor=pendingTotal?'y':'g';
 
   document.getElementById('mstats').innerHTML=`
-    <div class="scard ${submittedColor} clickable" onclick="mTab('ts')"><div class="sl">Submitted</div><div class="sv">${submitted.length} / ${workers?.length||0}</div><div class="ss">${needReview.length} need review</div></div>
-    <div class="scard ${missingColor} clickable" onclick="mTab('ts')"><div class="sl">Missing</div><div class="sv">${missingWorkers.length}</div><div class="ss">${shortNames(missingWorkers,'All submitted')}</div></div>
+    <div class="scard ${reviewColor} clickable" onclick="mTab('ts')"><div class="sl">Awaiting Review</div><div class="sv">${needReview.length}</div><div class="ss">${shortNames(needReview,'Nothing to approve')}</div></div>
+    <div class="scard ${missingColor} clickable" onclick="mTab('ts')"><div class="sl">Missing Timesheets</div><div class="sv">${missingWorkers.length}</div><div class="ss">${shortNames(missingWorkers,'All submitted')}</div></div>
     <div class="scard ${outColor} clickable" onclick="mTab('vc')"><div class="sl">Out Today</div><div class="sv">${(outToday||[]).length}</div><div class="ss">${shortNames(outToday,'Nobody out')}</div></div>
     <div class="scard ${pendingColor} clickable" onclick="mTab('${pendingUsers?'pa':'vr'}')"><div class="sl">Pending Actions</div><div class="sv">${pendingTotal}</div><div class="ss">${pendingTotal?`${pendingUsers} user${pendingUsers===1?'':'s'} • ${pendingVacs} vacation${pendingVacs===1?'':'s'}`:'Nothing pending'}</div></div>`;
 
