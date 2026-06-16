@@ -98,6 +98,9 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow',sans-serif;min-h
 .scard .sl{font-size:.65rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-bottom:6px}
 .scard .sv{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:1.8rem;line-height:1}
 .scard.y .sv{color:var(--acc)}.scard.g .sv{color:var(--grn)}.scard.r .sv{color:var(--red)}.scard.b .sv{color:var(--blu)}
+.scard.clickable{cursor:pointer;transition:all .15s}
+.scard.clickable:hover{border-color:var(--acc);transform:translateY(-1px)}
+.scard .ss{font-size:.75rem;color:var(--mut);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mtabs{display:flex;gap:4px;margin-bottom:1.25rem;background:var(--sur);padding:4px;border-radius:8px;width:fit-content}
 .mtab{padding:.45rem 1rem;font-family:'Barlow',sans-serif;font-weight:600;font-size:.78rem;letter-spacing:.05em;text-transform:uppercase;border:none;cursor:pointer;border-radius:6px;background:none;color:var(--mut);transition:all .15s}
 .mtab.active{background:var(--sur2);color:var(--ink)}
@@ -858,14 +861,38 @@ async function loadMgr(){
   mgrWorkers=workers||[];
   const{data:pending}=await sb.from('profiles').select('*').eq('status','pending');
   const ws=wkStart(new Date());
-  const{data:wkTS}=await sb.from('timesheets').select('*, profiles(full_name)').gte('week_start',isoD(ws)).neq('user_id',cUser.id);
-  const sub=(wkTS||[]).filter(t=>t.status==='submitted'||t.status==='approved');
+  const weekIso=isoD(ws);
+  const todayIso=isoD(new Date());
+  const{data:wkTS}=await sb.from('timesheets').select('*, profiles(full_name)').eq('week_start',weekIso).neq('user_id',cUser.id);
+  const submitted=(wkTS||[]).filter(t=>t.status==='submitted'||t.status==='approved');
+  const needReview=(wkTS||[]).filter(t=>t.status==='submitted');
+  const submittedIds=new Set(submitted.map(t=>t.user_id));
+  const missingWorkers=(workers||[]).filter(w=>!submittedIds.has(w.id));
+  const shortNames=(rows,fallback='None')=>{
+    if(!rows?.length) return fallback;
+    const names=rows.map(x=>x.full_name||x.username||x.worker?.full_name||'Worker').filter(Boolean);
+    const shown=names.slice(0,2).map(escHtml).join(', ');
+    return names.length>2?`${shown} +${names.length-2} more`:shown;
+  };
+  const {data:outToday,error:outErr}=await sb.from('vacation_requests')
+    .select('*, worker:profiles!vacation_requests_user_id_fkey(full_name)')
+    .eq('status','approved')
+    .lte('start_date',todayIso)
+    .gte('end_date',todayIso);
+  const {data:pendingVac,error:pvErr}=await sb.from('vacation_requests').select('id').eq('status','pending');
+  const pendingUsers=(pending||[]).length;
+  const pendingVacs=(pendingVac||[]).length;
+  const pendingTotal=pendingUsers+pendingVacs;
+  const submittedColor=submitted.length===(workers?.length||0)&&workers?.length?'g':'b';
+  const missingColor=missingWorkers.length?'r':'g';
+  const outColor=(outToday||[]).length?'y':'g';
+  const pendingColor=pendingTotal?'y':'g';
 
   document.getElementById('mstats').innerHTML=`
-    <div class="scard y"><div class="sl">Total Workers</div><div class="sv">${workers?.length||0}</div></div>
-    <div class="scard b"><div class="sl">Submitted This Week</div><div class="sv">${sub.length}</div></div>
-    <div class="scard r"><div class="sl">Pending Approval</div><div class="sv">${pending?.length||0}</div></div>
-    <div class="scard g"><div class="sl">Total Hrs This Week</div><div class="sv">${(wkTS||[]).reduce((s,t)=>s+(parseFloat(t.total_hours)||0),0)}</div></div>`;
+    <div class="scard ${submittedColor} clickable" onclick="mTab('ts')"><div class="sl">Submitted</div><div class="sv">${submitted.length} / ${workers?.length||0}</div><div class="ss">${needReview.length} need review</div></div>
+    <div class="scard ${missingColor} clickable" onclick="mTab('ts')"><div class="sl">Missing</div><div class="sv">${missingWorkers.length}</div><div class="ss">${shortNames(missingWorkers,'All submitted')}</div></div>
+    <div class="scard ${outColor} clickable" onclick="mTab('vc')"><div class="sl">Out Today</div><div class="sv">${(outToday||[]).length}</div><div class="ss">${shortNames(outToday,'Nobody out')}</div></div>
+    <div class="scard ${pendingColor} clickable" onclick="mTab('${pendingUsers?'pa':'vr'}')"><div class="sl">Pending Actions</div><div class="sv">${pendingTotal}</div><div class="ss">${pendingTotal?`${pendingUsers} user${pendingUsers===1?'':'s'} • ${pendingVacs} vacation${pendingVacs===1?'':'s'}`:'Nothing pending'}</div></div>`;
 
   const tstb=document.getElementById('tstbody');
   tstb.innerHTML=!(wkTS?.length)?'<tr><td colspan="6" class="empty">No timesheets this week yet.</td></tr>':
