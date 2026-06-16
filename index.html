@@ -452,9 +452,9 @@ tbody tr:hover td{background:var(--sur2)}
   </div>
 </div>
 
-<div class="mo" id="vactionmodal">
+<div class="mo" id="vacationmodal">
   <div class="mbox" style="max-width:520px">
-    <button class="mclose" onclick="closeMo('vactionmodal')">✕</button>
+    <button class="mclose" onclick="closeMo('vacationmodal')">✕</button>
     <div class="mtitle" id="va-title">Vacation Request</div>
     <input type="hidden" id="va-id">
     <input type="hidden" id="va-action">
@@ -462,7 +462,7 @@ tbody tr:hover td{background:var(--sur2)}
     <div class="fg"><label>Manager Note</label><textarea class="narea" id="va-note" placeholder="Optional note to worker"></textarea></div>
     <div class="macts">
       <button class="btn bsub" onclick="saveVacationDecision()">Save Decision</button>
-      <button class="btn bsave" onclick="closeMo('vactionmodal')">Cancel</button>
+      <button class="btn bsave" onclick="closeMo('vacationmodal')">Cancel</button>
     </div>
   </div>
 </div>
@@ -791,7 +791,7 @@ async function subTS(){
 async function unsubTS(){
   if(!cTS)return;
   await sb.from('timesheets').update({status:'draft',submitted_at:null}).eq('id',cTS.id);
-  cTS.status='draft';toast('Timesheet unsubmitted','');
+  cTS.status='draft';toast('Timesheet unsubmitted','ok');
   renderDays();renderActs();updateWSBadge();
 }
 
@@ -976,13 +976,15 @@ async function appU(id,name){
 }
 async function rejU(id,name){
   if(!confirm(`Reject ${name}'s account?`))return;
-  await sb.from('profiles').update({status:'inactive'}).eq('id',id);
+  const{error}=await sb.from('profiles').update({status:'inactive'}).eq('id',id);
+  if(error)return toast('Error: '+error.message,'er');
   await logAudit('worker_rejected','worker',id,name,{status:{from:'pending',to:'inactive'}});
-  toast(`${name} rejected`,'');loadMgr()
+  toast(`${name} rejected`,'ok');loadMgr()
 }
 async function remW(id,name){
   if(!confirm(`Deactivate ${name}? They will not be able to use the app, but old timesheets stay saved.`))return;
-  await sb.from('profiles').update({status:'inactive'}).eq('id',id);
+  const{error}=await sb.from('profiles').update({status:'inactive'}).eq('id',id);
+  if(error)return toast('Error: '+error.message,'er');
   await logAudit('worker_deactivated','worker',id,name,{status:{from:'active',to:'inactive'}});
   toast(`${name} deactivated`,'ok');
   loadMgr();
@@ -1019,7 +1021,7 @@ async function viewTS(id){
     <table class="dtable"><thead><tr><th>Day</th><th>Job Code</th><th>Description</th><th>Hours</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr><td colspan="3">Total</td><td>${ts.total_hours} hrs</td></tr></tfoot></table>
-    ${ts.notes?`<div style="font-size:.82rem;color:var(--mut);margin-top:.5rem"><strong style="color:var(--ink)">Notes:</strong> ${ts.notes}</div>`:''}`;
+    ${ts.notes?`<div style="font-size:.82rem;color:var(--mut);margin-top:.5rem"><strong style="color:var(--ink)">Notes:</strong> ${escHtml(ts.notes)}</div>`:''}`;
   document.getElementById('dacts').innerHTML=ts.status==='submitted'?`<button class="btn bsub" onclick="appTS('${ts.id}');closeMo('dmodal')">✓ Approve</button>`:(ts.status==='approved'?`<button class="btn buns" onclick="unlockTS('${ts.id}');closeMo('dmodal')">Unlock Timesheet</button>`:'');
   openMo('dmodal');
 }
@@ -1177,7 +1179,7 @@ function openVacationDecision(id,action){
   document.getElementById('va-note').value='';
   document.getElementById('va-title').textContent=action==='approved'?'Approve Vacation':'Reject Vacation';
   document.getElementById('va-summary').innerHTML=`<strong style="color:var(--ink)">${escHtml(r.worker?.full_name||'Worker')}</strong><br>${fmtVacRange(r)}<br><span style="text-transform:capitalize">${escHtml(r.request_type||'vacation')}</span>${r.notes?`<br>Note: ${escHtml(r.notes)}`:''}`;
-  openMo('vactionmodal');
+  openMo('vacationmodal');
 }
 
 async function saveVacationDecision(){
@@ -1188,7 +1190,7 @@ async function saveVacationDecision(){
   const {error}=await sb.from('vacation_requests').update({status:action,manager_note:note||null,decided_by:cUser.id,decided_at:new Date().toISOString()}).eq('id',id);
   if(error) return toast(error.message,'er');
   await logAudit(action==='approved'?'vacation_approved':'vacation_rejected','vacation_request',id,r?.worker?.full_name||'Worker',{dates:r?`${r.start_date} to ${r.end_date}`:'',status:{from:r?.status||'pending',to:action},manager_note:note});
-  closeMo('vactionmodal');
+  closeMo('vacationmodal');
   toast(action==='approved'?'Vacation approved ✓':'Vacation rejected','ok');
   loadManagerVacations();
   loadVacationCalendar();
@@ -1227,8 +1229,8 @@ async function exportCSV(){
   if(!data?.length)return toast('No data','er');
   let csv='Worker,Week Start,Week End,Day,Job Code,Description,Hours,Total Hours,Status\n';
   data.forEach(ts=>{
-    if(ts.timesheet_entries?.length)ts.timesheet_entries.forEach(e=>{csv+=`"${ts.profiles?.full_name}","${ts.week_start}","${ts.week_end}","${DAYS[e.day_index]}","${e.job_code||''}","${e.description||''}","${e.hours}","${ts.total_hours}","${ts.status}"\n`});
-    else csv+=`"${ts.profiles?.full_name}","${ts.week_start}","${ts.week_end}","","","","0","${ts.total_hours}","${ts.status}"\n`;
+    if(ts.timesheet_entries?.length)ts.timesheet_entries.forEach(e=>{csv+=[ts.profiles?.full_name,ts.week_start,ts.week_end,DAYS[e.day_index],e.job_code||'',e.description||'',e.hours,ts.total_hours,ts.status].map(csvSafe).join(',')+'\n'});
+    else csv+=[ts.profiles?.full_name,ts.week_start,ts.week_end,'','','','0',ts.total_hours,ts.status].map(csvSafe).join(',')+'\n';
   });
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`timesheets_${new Date().toISOString().split('T')[0]}.csv`;a.click();
   toast('CSV downloaded ✓','ok');
@@ -1339,9 +1341,9 @@ async function copyDayLastWeek(d){
 async function copyDayFromTeammate(d, userId){
   if(!userId) return;
   const ts=teammateCache?.weekTS.find(t=>t.user_id===userId);
-  if(!ts) return toast('That teammate has no timesheet this week','er');
+  if(!ts){document.getElementById(`qfsel${d}`).value='';return toast('That teammate has no timesheet this week','er');}
   const{data:ents}=await sb.from('timesheet_entries').select('*').eq('timesheet_id',ts.id).eq('day_index',d);
-  if(!ents?.length) return toast(`No entries for that teammate on ${DAYS[d]}`,'er');
+  if(!ents?.length){document.getElementById(`qfsel${d}`).value='';return toast(`No entries for that teammate on ${DAYS[d]}`,'er');}
   const worker=teammateCache.workers.find(w=>w.id===userId);
   applyDayEntries(d, ents);
   document.getElementById(`qf${d}`).classList.add('hidden');
