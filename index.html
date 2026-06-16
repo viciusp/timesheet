@@ -763,7 +763,9 @@ function collectE(){
 }
 
 async function savTS(){
-  if(saving)return;saving=true;
+  if(saving)return;
+  if(cProfile?.role!=='worker')return;
+  saving=true;
   const entries=collectE();
   const tot=entries.reduce((s,e)=>s+(parseFloat(e.hours)||0),0);
   const notes=document.getElementById('wnotes').value;
@@ -856,7 +858,7 @@ async function loadMgr(){
   mgrWorkers=workers||[];
   const{data:pending}=await sb.from('profiles').select('*').eq('status','pending');
   const ws=wkStart(new Date());
-  const{data:wkTS}=await sb.from('timesheets').select('*, profiles(full_name)').gte('week_start',isoD(ws));
+  const{data:wkTS}=await sb.from('timesheets').select('*, profiles(full_name)').gte('week_start',isoD(ws)).neq('user_id',cUser.id);
   const sub=(wkTS||[]).filter(t=>t.status==='submitted'||t.status==='approved');
 
   document.getElementById('mstats').innerHTML=`
@@ -1365,7 +1367,7 @@ function applyDayEntries(d, ents){
 boot();
 
 // Mark dirty on any edits
-document.addEventListener('input',(e)=>{ if(e.target.closest('#pmodal')) return; if(e.target.matches('input, textarea, select')) markDirty(); });
+document.addEventListener('input',(e)=>{ if(e.target.closest('#pmodal')) return; if(cProfile?.role!=='worker') return; if(e.target.matches('input, textarea, select')) markDirty(); });
 
 // Browser warning (refresh/close/back)
 window.addEventListener('beforeunload',(e)=>{ if(!isDirty) return; e.preventDefault(); e.returnValue=''; });
