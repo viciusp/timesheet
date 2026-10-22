@@ -1071,7 +1071,7 @@ async function loadMgr(){
     .eq('status','approved')
     .lte('start_date',todayIso)
     .gte('end_date',todayIso);
-  const {data:pendingVac,error:pvErr}=await sb.from('vacation_requests').select('id').eq('status','pending');
+  const {data:pendingVac,error:pvErr}=await sb.from('vacation_requests').select('id').or('status.eq.pending,cancellation_status.eq.pending');
   const pendingUsers=(pending||[]).length;
   const pendingVacs=(pendingVac||[]).length;
   const pendingTotal=pendingUsers+pendingVacs;
@@ -1347,7 +1347,7 @@ async function loadPayroll(){
     <td>${fmtMoneyHours(r.regular)}</td>
     <td style="color:${r.overtime>0?'var(--red)':'var(--mut)'}">${r.overtime>0?fmtMoneyHours(r.overtime):'—'}</td>
     <td><strong>${fmtMoneyHours(r.total)}</strong></td>
-    <td><span class="sbadge ${r.status}">${r.status}</span></td>
+    <td><span class="sbadge ${r.status}">${r.status}</span>${cancellationDescription(r)}</td>
   </tr>`).join('');
 }
 function csvSafe(v){return `"${String(v??'').replace(/"/g,'""')}"`}
@@ -1399,6 +1399,30 @@ async function submitVacationRequest(){
   loadMyVacations();
 }
 
+function cancellationDescription(r){
+ if(!r.cancellation_status)return '';
+ const label={pending:'Cancellation requested — awaiting manager',approved:'Cancellation approved',denied:'Cancellation declined — vacation remains approved'}[r.cancellation_status];
+ return '<div class="hint">'+escHtml(label)+'<br>Reason: '+escHtml(r.cancellation_reason||'')+(r.cancellation_manager_note?'<br>Manager: '+escHtml(r.cancellation_manager_note):'')+'</div>';
+}
+async function requestApprovedVacationCancellation(id){
+ const reason=prompt('Why would you like to cancel this approved vacation? Your vacation stays approved until your manager accepts the cancellation.');
+ if(reason===null)return;if(!reason.trim()||reason.length>2000)return toast('Enter a reason up to 2000 characters.','er');
+ const {error}=await sb.rpc('request_vacation_cancellation',{p_id:id,p_reason:reason.trim()});
+ if(error)return toast('Could not request cancellation: '+error.message,'er');
+ await logAudit('vacation_cancellation_requested','vacation_request',id,cProfile?.full_name||'Worker',{reason:reason.trim()});
+ toast('Cancellation requested; manager approval needed','ok');loadMyVacations();
+}
+async function decideVacationCancellation(id,approve){
+ if(cProfile?.role!=='manager')return;
+ const note=prompt(approve?'Optional note for approving this cancellation:':'Why are you declining this cancellation?');if(note===null)return;
+ if(!approve&&!note.trim())return toast('Please enter a reason.','er');
+ if(!confirm(approve?'Approve cancellation? The vacation will be removed from the calendar and its days released.':'Decline cancellation? The vacation will remain approved.'))return;
+ const {error}=await sb.from('vacation_requests').update({status:approve?'cancelled':'approved',cancellation_status:approve?'approved':'denied',cancellation_manager_note:note.trim()||null,cancellation_decided_at:new Date().toISOString(),cancellation_decided_by:cUser.id}).eq('id',id).eq('status','approved').eq('cancellation_status','pending').select('id').single();
+ if(error)return toast('Could not save decision. Refresh and retry. '+error.message,'er');
+ await logAudit(approve?'vacation_cancellation_approved':'vacation_cancellation_denied','vacation_request',id,'Worker',{note:note.trim()});
+ toast(approve?'Cancellation approved':'Cancellation declined','ok');closeMo('vac-detail-modal');loadMgr();
+}
+
 async function loadMyVacations(){
   const tb=document.getElementById('my-vtbody');
   if(!tb||!cUser) return;
@@ -1412,7 +1436,7 @@ async function loadMyVacations(){
     <td style="text-transform:capitalize;color:var(--mut)">${escHtml(r.request_type||'vacation')}</td>
     <td><span class="sbadge ${r.status}">${r.status}</span></td>
     <td style="color:var(--mut);font-size:.82rem">${escHtml(r.manager_note||'')}</td>
-    <td>${r.status==='pending'?`<button class="bsm brej" onclick="cancelVacationRequest('${r.id}')">Cancel</button>`:'—'}</td>
+    <td>${r.status==='pending'?`<button class="bsm brej" onclick="cancelVacationRequest('${r.id}')">Cancel</button>`:r.status==='approved'&&r.cancellation_status!=='pending'&&r.start_date>=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())?`<button class="bsm brej" onclick="requestApprovedVacationCancellation('${r.id}')">Request cancellation</button>`:r.cancellation_status==='pending'?'Awaiting cancellation decision':'—'}</td>
   </tr>`).join('');
 }
 
@@ -1440,7 +1464,7 @@ async function loadManagerVacations(){
     <td><span class="sbadge ${r.status}">${r.status}</span></td>
     <td style="color:var(--mut);font-size:.82rem">${escHtml(r.notes||'')}${r.manager_note?`<br><strong style="color:var(--ink)">Manager:</strong> ${escHtml(r.manager_note)}`:''}</td>
     <td><div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button class="bsm bview" onclick="openVacationDetails('${r.id}')">View</button>
+      <button class="bsm bview" onclick="openVacationDetails('${r.id}')">View</button>${r.cancellation_status==='pending'?`<button class="bsm bapp" onclick="decideVacationCancellation('${r.id}',true)">Approve cancellation</button><button class="bsm brej" onclick="decideVacationCancellation('${r.id}',false)">Decline cancellation</button>`:''}
       ${r.status==='pending'?`<button class="bsm bapp" onclick="openVacationDecision('${r.id}','approved')">Approve</button><button class="bsm brej" onclick="openVacationDecision('${r.id}','rejected')">Reject</button>`:''}
     </div></td>
   </tr>`).join('');
@@ -1453,6 +1477,8 @@ function openVacationDetails(id){
  modal.innerHTML='<div class="mbox"><button class="mclose" onclick="closeMo(&quot;vac-detail-modal&quot;)">×</button><div class="mtitle">Vacation request</div><div id="vd-summary"></div><form id="vd-form"><div class="frow"><div class="fg"><label>Start date</label><input type="date" id="vd-start" required></div><div class="fg"><label>End date</label><input type="date" id="vd-end" required></div></div><div class="fg"><label>Type</label><select id="vd-type"><option value="vacation">Vacation</option><option value="pto">PTO</option><option value="unpaid">Unpaid</option><option value="sick">Sick</option><option value="other">Other</option></select></div><div class="fg"><label>Worker request details</label><textarea id="vd-notes" class="narea"></textarea></div><div class="fg"><label>Status</label><select id="vd-status"><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></div><div class="fg"><label>Manager note / reason for change</label><textarea id="vd-manager" class="narea"></textarea></div><div id="vd-error" role="status"></div><div class="macts"><button type="button" class="btn bsave" id="vd-edit">Edit request</button><button class="btn bsub hidden" id="vd-save">Save changes</button><button type="button" class="btn bsave" onclick="closeMo(&quot;vac-detail-modal&quot;)">Close</button></div></form></div>';
  const timestamp=value=>value?new Date(value).toLocaleString():'Not recorded';
  document.getElementById('vd-summary').innerHTML='<strong>'+escHtml(r.worker?.full_name||'Worker')+'</strong><p class="hint">Requested: '+escHtml(timestamp(r.created_at))+'<br>Last decision: '+escHtml(timestamp(r.decided_at))+'<br>Last updated: '+escHtml(timestamp(r.updated_at))+'</p>';
+ document.getElementById('vd-summary').innerHTML+=cancellationDescription(r)+(r.cancellation_requested_at?'<p class="hint">Cancellation requested: '+escHtml(timestamp(r.cancellation_requested_at))+'<br>Cancellation decision: '+escHtml(timestamp(r.cancellation_decided_at))+'</p>':'');
+ if(r.status==='cancelled'){const option=new Option('Cancelled','cancelled');document.getElementById('vd-status').add(option);}
  for(const [field,value] of [['start',r.start_date],['end',r.end_date],['type',r.request_type],['notes',r.notes],['status',r.status],['manager',r.manager_note]]){const el=document.getElementById('vd-'+field);el.value=value||'';el.disabled=true;}
  document.getElementById('vd-edit').onclick=()=>{document.querySelectorAll('#vd-form input,#vd-form textarea,#vd-form select').forEach(el=>el.disabled=false);document.getElementById('vd-save').classList.remove('hidden');document.getElementById('vd-edit').classList.add('hidden');};
  document.getElementById('vd-form').onsubmit=event=>{event.preventDefault();saveVacationDetails(id);};
@@ -1461,6 +1487,7 @@ function openVacationDetails(id){
 async function saveVacationDetails(id){
  if(cProfile?.role!=='manager')return;
  const r=managerVacationRows.find(x=>x.id===id);if(!r)return;
+ if(r.cancellation_status==='pending')return toast('Resolve the cancellation request before editing this vacation.','er');
  const value=field=>document.getElementById('vd-'+field).value.trim();
  const changes={start_date:value('start'),end_date:value('end'),request_type:value('type'),notes:value('notes')||null,status:value('status'),manager_note:value('manager')||null};
  const errorBox=document.getElementById('vd-error');
